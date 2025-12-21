@@ -37,23 +37,22 @@ function Layout() {
     location.pathname.startsWith("/dashboard") || 
     location.pathname.startsWith("/create-story") || 
     location.pathname.startsWith("/admin") || 
-    location.pathname.startsWith("/profile");
-    location.pathname.startsWith("/story/");
+    location.pathname.startsWith("/profile") ||
+    location.pathname.startsWith("/story/"); // 👈 Fixed: Changed ; to || so this line works
   
     return (
     <>
-       
+        
     {/* 👇 COMMENT THIS OUT LIKE THIS: */}
       {/*} <UploadData /> */}
-
-
+      
 
       {/* 1. Only show Global Header if NOT on an App Route */}
       {!isAppRoute && <Header />}
 
       {/* 2. Conditional Styling:
-         - Normal Pages: Add 'pt-16' to push content below fixed header.
-         - App Pages: No padding, let the page handle its own full-screen layout.
+          - Normal Pages: Add 'pt-16' to push content below fixed header.
+          - App Pages: No padding, let the page handle its own full-screen layout.
       */}
       <main className={isAppRoute ? "" : "pt-16 min-h-screen"}>
         <Routes>
@@ -83,8 +82,8 @@ function Layout() {
           <Route
             path="/admin"
             element={
-              <ProtectedRoute>  {/* Layer 1: Must be Logged In */}
-                <AdminGuard>    {/* Layer 2: Must be on the "Boss List" */}
+              <ProtectedRoute>
+                <AdminGuard>
                   <AdminPanel />
                 </AdminGuard>
               </ProtectedRoute>
@@ -101,8 +100,8 @@ function Layout() {
         </Routes>
       </main>
 
-      {/* 3. Only show Footer if NOT on an App Route */}
-      {!isAppRoute && <Footer />}
+      {/* 3. Only show Footer if NOT on an App Route AND NOT on Home Page */}
+      {!isAppRoute && location.pathname !== "/" && <Footer />}
     </>
   );
 }

@@ -7,6 +7,7 @@ import {
 import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import Modal from "./ui/Modal";
+import toast from "react-hot-toast"; // Ensure you import toast for feedback
 
 export default function Header() {
   const { user, userProfile, logout } = useAuth();
@@ -22,7 +23,6 @@ export default function Header() {
   });
 
   useEffect(() => {
-    // Manually toggle the class on the HTML element
     if (dark) {
       document.documentElement.classList.add("dark");
       localStorage.setItem("theme", "dark");
@@ -48,13 +48,10 @@ export default function Header() {
   }, []);
 
   // --- 3. DYNAMIC STYLES ---
-  // If Scrolled: White/Dark Glass. 
-  // If Top: COMPLETELY TRANSPARENT (so hero image shows through).
   const navBackground = scrolled 
     ? "bg-white/80 dark:bg-[#0B0F19]/80 backdrop-blur-md border-b border-slate-200/50 dark:border-white/5 shadow-sm" 
     : "bg-transparent border-transparent";
 
-  // Text Color: White at top (for Hero contrast), Theme-based when scrolled
   const textColor = scrolled
     ? "text-slate-800 dark:text-white"
     : "text-white drop-shadow-md"; 
@@ -63,10 +60,19 @@ export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
 
+  // --- 🔴 REVISED LOGOUT FUNCTION ---
   async function handleLogout() {
-    await logout();
-    setLogoutOpen(false);
-    navigate("/login");
+    try {
+      await logout();
+      setLogoutOpen(false);
+      setMenuOpen(false); // Close other menus too
+      setMobileMenuOpen(false);
+      toast.success("Logged out successfully"); // Add feedback
+      navigate("/login"); // Force redirect
+    } catch (error) {
+      console.error("Logout failed", error);
+      toast.error("Failed to log out");
+    }
   }
 
   return (

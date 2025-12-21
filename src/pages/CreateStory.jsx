@@ -1,20 +1,10 @@
 import React, { useEffect, useState } from "react";
 import {
-  Plus,
-  Trash2,
-  ChevronDown,
-  ChevronUp,
-  Save,
-  Send,
-  Camera,
-  Image as ImageIcon,
-  Loader2,
-  AlertCircle,
-  Youtube,
-  Info,
-  Lightbulb,
-  Type
+  Plus, Trash2, ChevronDown, ChevronUp, Save, Send,
+  Camera, Image as ImageIcon, Loader2, AlertCircle,
+  Youtube, Info, Lightbulb, Type, Check, X
 } from "lucide-react";
+import * as LucideIcons from "lucide-react"; // ⚡ Import for dynamic icons
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -30,11 +20,23 @@ import {
   orderBy
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import imageCompression from 'browser-image-compression'; // ⚡ IMPORT COMPRESSION
+import imageCompression from 'browser-image-compression';
 
 import { db, storage } from "../services/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useMetaOptions } from "../hooks/useMetaOptions";
+
+// --- HELPER: Get Color Hex from Name ---
+const getColorHex = (name) => {
+  const colors = {
+    slate: '#64748b', red: '#ef4444', orange: '#f97316', amber: '#f59e0b',
+    yellow: '#eab308', lime: '#84cc16', green: '#22c55e', emerald: '#10b981',
+    teal: '#14b8a6', cyan: '#06b6d4', sky: '#0ea5e9', blue: '#3b82f6',
+    indigo: '#6366f1', violet: '#8b5cf6', purple: '#a855f7', fuchsia: '#d946ef',
+    pink: '#ec4899', rose: '#f43f5e'
+  };
+  return colors[name] || '#94a3b8';
+};
 
 export default function CreateStory() {
   const { user, userProfile } = useAuth();
@@ -70,7 +72,7 @@ export default function CreateStory() {
     coverImageFile: null,
     coverImagePreview: null,
     
-    // Gallery: Array of { url, caption, file, preview }
+    // Gallery
     gallery: [], 
     days: [],
   });
@@ -92,7 +94,6 @@ export default function CreateStory() {
     async function loadStoryForEdit() {
       try {
         setLoading(true);
-
         const storyRef = doc(db, "stories", editId);
         const storySnap = await getDoc(storyRef);
 
@@ -156,17 +157,15 @@ export default function CreateStory() {
   }, [editId, user, navigate]);
 
   /* -------------------- HELPERS -------------------- */
-
-  // ⚡ COMPRESSION HELPER
   const compressImage = async (file) => {
     const options = {
-      maxSizeMB: 1,          // Max size ~1MB
-      maxWidthOrHeight: 1920, // Max width/height 1920px
+      maxSizeMB: 1,
+      maxWidthOrHeight: 1920,
       useWebWorker: true,
       fileType: "image/jpeg"
     };
     try {
-      if (file.size / 1024 / 1024 < 1) return file; // Skip if already small
+      if (file.size / 1024 / 1024 < 1) return file;
       return await imageCompression(file, options);
     } catch (error) {
       console.error("Compression error:", error);
@@ -181,32 +180,17 @@ export default function CreateStory() {
   };
 
   /* -------------------- HANDLERS -------------------- */
-
   const handleCoverImageChange = async (file) => {
     if (!file) return;
-    
-    if (!trip.coverImagePreview && totalImagesCount >= MAX_IMAGES) {
-      return alert(`Image limit reached (${MAX_IMAGES} total).`);
-    }
-
+    if (!trip.coverImagePreview && totalImagesCount >= MAX_IMAGES) return alert(`Image limit reached (${MAX_IMAGES} total).`);
     const compressedFile = await compressImage(file);
-
-    setTrip(p => ({
-      ...p,
-      coverImageFile: compressedFile,
-      coverImagePreview: URL.createObjectURL(compressedFile),
-    }));
+    setTrip(p => ({ ...p, coverImageFile: compressedFile, coverImagePreview: URL.createObjectURL(compressedFile) }));
   };
 
   const handleDayImageChange = async (index, file) => {
     if (!file) return;
-
-    if (!trip.days[index].imagePreview && totalImagesCount >= MAX_IMAGES) {
-      return alert(`Image limit reached (${MAX_IMAGES} total).`);
-    }
-
+    if (!trip.days[index].imagePreview && totalImagesCount >= MAX_IMAGES) return alert(`Image limit reached (${MAX_IMAGES} total).`);
     const compressedFile = await compressImage(file);
-
     const days = [...trip.days];
     days[index].imageFile = compressedFile;
     days[index].imagePreview = URL.createObjectURL(compressedFile);
@@ -216,25 +200,12 @@ export default function CreateStory() {
   const handleGalleryUpload = async (files) => {
     if (!files) return;
     const filesArray = Array.from(files);
-    const remainingSlots = MAX_IMAGES - totalImagesCount;
-
-    if (filesArray.length > remainingSlots) {
-      return alert(`Limit exceeded. You can only add ${remainingSlots} more.`);
-    }
-
-    // Process all files in parallel
-    const newPhotos = await Promise.all(
-        filesArray.map(async (file) => {
-            const compressedFile = await compressImage(file);
-            return {
-                url: "",
-                caption: "",
-                file: compressedFile,
-                preview: URL.createObjectURL(compressedFile)
-            };
-        })
-    );
-
+    if (filesArray.length > (MAX_IMAGES - totalImagesCount)) return alert(`Limit exceeded.`);
+    
+    const newPhotos = await Promise.all(filesArray.map(async (file) => {
+        const compressedFile = await compressImage(file);
+        return { url: "", caption: "", file: compressedFile, preview: URL.createObjectURL(compressedFile) };
+    }));
     setTrip(p => ({ ...p, gallery: [...p.gallery, ...newPhotos] }));
   };
 
@@ -259,10 +230,7 @@ export default function CreateStory() {
 
   const addDay = () => {
     const id = trip.days.length + 1;
-    setTrip(p => ({
-      ...p,
-      days: [...p.days, { id, title: "", story: "", departure: "", destination: "", food: "", stay: "", travel: "", highlight: "", imageFile: null, imagePreview: null, imageCaption: "" }],
-    }));
+    setTrip(p => ({ ...p, days: [...p.days, { id, title: "", story: "", departure: "", destination: "", food: "", stay: "", travel: "", highlight: "", imageFile: null, imagePreview: null, imageCaption: "" }] }));
     setExpandedDays([id]);
   };
 
@@ -287,7 +255,6 @@ export default function CreateStory() {
       setLoading(true);
 
       let activeId = storyId;
-
       if (!activeId) {
           const newDoc = await addDoc(collection(db, "stories"), { 
               createdAt: serverTimestamp(),
@@ -302,41 +269,23 @@ export default function CreateStory() {
         coverUrl = await uploadImage(`stories/${activeId}/cover.jpg`, trip.coverImageFile);
       }
 
-      // Upload Gallery (Save as objects: {url, caption})
+      // Upload Gallery
       const finalGallery = [];
       for (let i = 0; i < trip.gallery.length; i++) {
         const item = trip.gallery[i];
         let itemUrl = item.url;
-        
-        if (item.file) {
-          itemUrl = await uploadImage(`stories/${activeId}/gallery/${Date.now()}-${i}.jpg`, item.file);
-        }
-        
-        finalGallery.push({
-          url: itemUrl,
-          caption: item.caption || ""
-        });
+        if (item.file) itemUrl = await uploadImage(`stories/${activeId}/gallery/${Date.now()}-${i}.jpg`, item.file);
+        finalGallery.push({ url: itemUrl, caption: item.caption || "" });
       }
 
       // Update Main Doc
       await updateDoc(doc(db, "stories", activeId), {
-        title: trip.title,
-        location: trip.location,
-        month: trip.month,
-        totalCost: trip.totalCost,
-        tripType: trip.tripType,
-        difficulty: trip.difficulty,
-        aboutPlace: trip.aboutPlace,
-        specialNote: trip.specialNote,
-        youtubeLink: trip.enableYoutube ? trip.youtubeLink : "",
-        
-        authorId: user.uid,
-        authorName: userProfile?.name || "Explorer",
-        published: publish,
-        coverImage: coverUrl,
-        coverImageCaption: trip.coverImageCaption || "",
-        gallery: finalGallery, 
-        updatedAt: serverTimestamp(),
+        title: trip.title, location: trip.location, month: trip.month, totalCost: trip.totalCost,
+        tripType: trip.tripType, difficulty: trip.difficulty, aboutPlace: trip.aboutPlace, specialNote: trip.specialNote,
+        youtubeLink: trip.enableYoutube ? trip.youtubeLink : "", authorId: user.uid,
+        authorName: userProfile?.name || "Explorer", published: publish,
+        coverImage: coverUrl, coverImageCaption: trip.coverImageCaption || "",
+        gallery: finalGallery, updatedAt: serverTimestamp(),
       });
 
       // Update Days
@@ -350,16 +299,11 @@ export default function CreateStory() {
         }
 
         await addDoc(collection(db, "stories", activeId, "days"), {
-          title: trip.days[i].title || "",
-          story: trip.days[i].story || "",
-          departure: trip.days[i].departure || "",
-          destination: trip.days[i].destination || "",
-          food: trip.days[i].food || "",
-          stay: trip.days[i].stay || "",
-          travel: trip.days[i].travel || "",
-          highlight: trip.days[i].highlight || "",
-          imageUrl: dayImg || "",
-          imageCaption: trip.days[i].imageCaption || "", 
+          title: trip.days[i].title || "", story: trip.days[i].story || "",
+          departure: trip.days[i].departure || "", destination: trip.days[i].destination || "",
+          food: trip.days[i].food || "", stay: trip.days[i].stay || "",
+          travel: trip.days[i].travel || "", highlight: trip.days[i].highlight || "",
+          imageUrl: dayImg || "", imageCaption: trip.days[i].imageCaption || "",
           dayNumber: i + 1,
         });
       }
@@ -402,8 +346,22 @@ export default function CreateStory() {
               <InputGroup label="Location" value={trip.location} onChange={e => setTrip({...trip, location: e.target.value})} placeholder="e.g. Leh, India" />
               <InputGroup label="When?" value={trip.month} onChange={e => setTrip({...trip, month: e.target.value})} placeholder="e.g. Oct 2025" />
               <InputGroup label="Total Cost (₹)" value={trip.totalCost} onChange={e => setTrip({...trip, totalCost: e.target.value})} placeholder="e.g. 15000" />
-              <SelectGroup label="Trip Type" value={trip.tripType} onChange={e => setTrip({...trip, tripType: e.target.value})} options={tripTypes} />
-              <SelectGroup label="Difficulty" value={trip.difficulty} onChange={e => setTrip({...trip, difficulty: e.target.value})} options={difficulties} />
+              
+              {/* ⚡ PREMIUM CUSTOM SELECTS */}
+              <CustomSelect 
+                label="Trip Type" 
+                value={trip.tripType} 
+                onChange={(val) => setTrip({...trip, tripType: val})} 
+                options={tripTypes} 
+                placeholder="Select Type..."
+              />
+              <CustomSelect 
+                label="Difficulty" 
+                value={trip.difficulty} 
+                onChange={(val) => setTrip({...trip, difficulty: val})} 
+                options={difficulties} 
+                placeholder="Select Level..."
+              />
             </div>
           </div>
 
@@ -439,7 +397,6 @@ export default function CreateStory() {
               <input type="file" accept="image/*" hidden onChange={(e) => handleCoverImageChange(e.target.files[0])} />
             </label>
             
-            {/* Cover Caption */}
             {trip.coverImagePreview && (
                <div className="flex items-center gap-2">
                   <Type size={16} className="text-slate-500"/>
@@ -541,11 +498,11 @@ export default function CreateStory() {
                            </div>
                            <InputGroup label="Highlight" value={day.highlight} onChange={e => updateDay(index, "highlight", e.target.value)} placeholder="Moment of the day..." />
                            <textarea 
-                              className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-white placeholder:text-white/20 focus:outline-none focus:border-orange-500/50 transition-colors resize-none"
-                              rows={3}
-                              placeholder="Tell the story of this day..."
-                              value={day.story}
-                              onChange={e => updateDay(index, "story", e.target.value)}
+                             className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-white placeholder:text-white/20 focus:outline-none focus:border-orange-500/50 transition-colors resize-none"
+                             rows={3}
+                             placeholder="Tell the story of this day..."
+                             value={day.story}
+                             onChange={e => updateDay(index, "story", e.target.value)}
                            />
                         </div>
                       </div>
@@ -571,10 +528,10 @@ export default function CreateStory() {
                <div className="relative">
                  <div className="absolute top-4 left-4 text-yellow-500"><Info size={20}/></div>
                  <textarea
-                    className="w-full h-40 bg-black/20 border border-white/10 rounded-xl p-4 pl-12 text-white placeholder:text-white/20 focus:outline-none focus:border-yellow-500/50 transition-colors resize-none"
-                    placeholder="Hidden gems, local food, culture, or what makes this place special..."
-                    value={trip.aboutPlace}
-                    onChange={(e) => setTrip({...trip, aboutPlace: e.target.value})}
+                   className="w-full h-40 bg-black/20 border border-white/10 rounded-xl p-4 pl-12 text-white placeholder:text-white/20 focus:outline-none focus:border-yellow-500/50 transition-colors resize-none"
+                   placeholder="Hidden gems, local food, culture, or what makes this place special..."
+                   value={trip.aboutPlace}
+                   onChange={(e) => setTrip({...trip, aboutPlace: e.target.value})}
                  />
                </div>
             </div>
@@ -586,10 +543,10 @@ export default function CreateStory() {
                <div className="relative">
                  <div className="absolute top-4 left-4 text-red-500"><Lightbulb size={20}/></div>
                  <textarea
-                    className="w-full h-40 bg-black/20 border border-white/10 rounded-xl p-4 pl-12 text-white placeholder:text-white/20 focus:outline-none focus:border-red-500/50 transition-colors resize-none"
-                    placeholder="Best time to visit, what to carry, safety tips, permits needed..."
-                    value={trip.specialNote}
-                    onChange={(e) => setTrip({...trip, specialNote: e.target.value})}
+                   className="w-full h-40 bg-black/20 border border-white/10 rounded-xl p-4 pl-12 text-white placeholder:text-white/20 focus:outline-none focus:border-red-500/50 transition-colors resize-none"
+                   placeholder="Best time to visit, what to carry, safety tips, permits needed..."
+                   value={trip.specialNote}
+                   onChange={(e) => setTrip({...trip, specialNote: e.target.value})}
                  />
                </div>
             </div>
@@ -702,6 +659,90 @@ export default function CreateStory() {
 }
 
 /* --- UI COMPONENTS --- */
+
+// ⚡ PREMIUM CUSTOM SELECT: Renders Icon + Color + Label + Z-Index Fix
+const CustomSelect = ({ label, value, onChange, options, placeholder }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    
+    // Ensure options is an array to prevent crashes
+    const safeOptions = Array.isArray(options) ? options : [];
+    const selectedOption = safeOptions.find(o => o.label === value);
+
+    const renderIcon = (iconName) => {
+        if (!iconName) return null;
+        const IconComponent = LucideIcons[iconName];
+        return IconComponent ? <IconComponent size={16} /> : null;
+    };
+
+    return (
+        // 🔴 FIX: Dynamic z-index ensures dropdown floats ABOVE other elements
+        <div className={`space-y-1 relative ${isOpen ? "z-50" : "z-0"}`}>
+            <label className="text-xs font-medium text-slate-400 ml-1">{label}</label>
+            <button 
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-left flex items-center justify-between text-white hover:border-orange-500/50 transition-colors focus:outline-none"
+            >
+                {selectedOption ? (
+                    <div className="flex items-center gap-2">
+                         {selectedOption.icon && (
+                            <div style={{ color: getColorHex(selectedOption.color) }}>
+                                {renderIcon(selectedOption.icon)}
+                            </div>
+                         )}
+                         <span>{selectedOption.label}</span>
+                    </div>
+                ) : (
+                    <span className="text-white/30">{placeholder}</span>
+                )}
+                <ChevronDown size={16} className={`text-white/30 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+            
+            <AnimatePresence>
+                {isOpen && (
+                    <>
+                        {/* Backdrop to close when clicking outside */}
+                        <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+
+                        <motion.div 
+                            initial={{ opacity: 0, y: 10 }} 
+                            animate={{ opacity: 1, y: 0 }} 
+                            exit={{ opacity: 0, y: 10 }}
+                            className="absolute z-50 top-full left-0 right-0 mt-2 bg-[#1A1F2E] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto"
+                        >
+                            {safeOptions.length === 0 ? (
+                                <div className="p-4 text-center text-slate-500 text-sm">
+                                    No options found. 
+                                    <br/>(Check Admin Panel)
+                                </div>
+                            ) : (
+                                safeOptions.map(option => (
+                                    <button
+                                        key={option.id}
+                                        type="button"
+                                        onClick={() => { onChange(option.label); setIsOpen(false); }}
+                                        className="w-full px-4 py-3 text-left hover:bg-white/5 flex items-center gap-3 transition-colors border-b border-white/5 last:border-0"
+                                    >
+                                        {option.icon && (
+                                            <div style={{ color: getColorHex(option.color) }}>
+                                                {renderIcon(option.icon)}
+                                            </div>
+                                        )}
+                                        <span className={`flex-1 ${option.label === value ? 'text-white font-bold' : 'text-slate-400'}`}>
+                                            {option.label}
+                                        </span>
+                                        {option.label === value && <Check size={16} className="text-orange-500"/>}
+                                    </button>
+                                ))
+                            )}
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+}
+
 const InputGroup = ({ label, value, onChange, placeholder }) => (
   <div className="space-y-1">
     <label className="text-xs font-medium text-slate-400 ml-1">{label}</label>
@@ -711,24 +752,5 @@ const InputGroup = ({ label, value, onChange, placeholder }) => (
       placeholder={placeholder}
       className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/20 focus:outline-none focus:border-orange-500/50 transition-colors"
     />
-  </div>
-);
-
-const SelectGroup = ({ label, value, onChange, options }) => (
-  <div className="space-y-1">
-    <label className="text-xs font-medium text-slate-400 ml-1">{label}</label>
-    <div className="relative">
-      <select 
-        value={value} 
-        onChange={onChange}
-        className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white appearance-none focus:outline-none focus:border-orange-500/50 transition-colors"
-      >
-        <option value="" disabled className="bg-slate-900">Select...</option>
-        {options.map(o => (
-          <option key={o.id} value={o.label} className="bg-slate-900 text-white">{o.label}</option>
-        ))}
-      </select>
-      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" size={16} />
-    </div>
   </div>
 );

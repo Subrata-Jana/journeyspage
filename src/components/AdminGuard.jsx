@@ -5,11 +5,9 @@ import { ShieldAlert } from "lucide-react";
 export default function AdminGuard({ children }) {
   const { user, loading } = useAuth();
 
-  // 🔒 OPTIMUM SECURITY CONFIGURATION
-  // Replace these with the exact email(s) you use to login
+  // 🔒 STRICT SECURITY: Only this specific email is allowed
   const AUTHORIZED_ADMINS = [
-    "sjsubratajana@gmail.com", 
-    //another-admin@example.com"
+    "sjsubratajana@gmail.com"
   ];
 
   if (loading) {
@@ -23,17 +21,18 @@ export default function AdminGuard({ children }) {
     );
   }
 
-  // 🚫 LOGIC: If user is logged in BUT email is not in the list -> Kick to Home
+  // Debug: See who is trying to enter
+  if (user) console.log("User attempting admin access:", user.email);
+
+  // If user is logged in BUT not the admin -> Kick to Home
   if (user && !AUTHORIZED_ADMINS.includes(user.email)) {
     return <Navigate to="/" replace />;
   }
 
-  // If not logged in at all, ProtectedRoute will catch them first, 
-  // but just in case, we can redirect or let ProtectedRoute handle it.
+  // If not logged in -> Kick to Login
   if (!user) {
       return <Navigate to="/login" replace />;
   }
 
-  // ✅ ACCESS GRANTED
   return children;
 }
