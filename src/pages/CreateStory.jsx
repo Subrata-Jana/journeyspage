@@ -280,12 +280,31 @@ export default function CreateStory() {
 
       // Update Main Doc
       await updateDoc(doc(db, "stories", activeId), {
-        title: trip.title, location: trip.location, month: trip.month, totalCost: trip.totalCost,
-        tripType: trip.tripType, difficulty: trip.difficulty, aboutPlace: trip.aboutPlace, specialNote: trip.specialNote,
-        youtubeLink: trip.enableYoutube ? trip.youtubeLink : "", authorId: user.uid,
-        authorName: userProfile?.name || "Explorer", published: publish,
-        coverImage: coverUrl, coverImageCaption: trip.coverImageCaption || "",
-        gallery: finalGallery, updatedAt: serverTimestamp(),
+        title: trip.title, 
+        location: trip.location, 
+        month: trip.month, 
+        totalCost: trip.totalCost,
+        tripType: trip.tripType, 
+        difficulty: trip.difficulty, 
+        aboutPlace: trip.aboutPlace, 
+        specialNote: trip.specialNote,
+        youtubeLink: trip.enableYoutube ? trip.youtubeLink : "", 
+        authorId: user.uid,
+        authorName: userProfile?.name || "Explorer", 
+        
+        // ⚡ KEY FIXES START HERE ⚡
+        published: publish,
+        // If publishing, force status to 'pending' so it appears in Admin Panel
+        // If saving draft, keep it as 'draft' or current status
+        status: publish ? 'pending' : 'draft', 
+        // Clear old admin notes so the badge disappears
+        adminNotes: publish ? "" : (trip.adminNotes || ""), 
+        // ⚡ KEY FIXES END HERE ⚡
+
+        coverImage: coverUrl, 
+        coverImageCaption: trip.coverImageCaption || "",
+        gallery: finalGallery, 
+        updatedAt: serverTimestamp(),
       });
 
       // Update Days

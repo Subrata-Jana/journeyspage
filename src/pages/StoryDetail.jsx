@@ -1,17 +1,18 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom"; // Added useLocation
 import { collection, doc, getDoc, getDocs, orderBy, query } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
-import { motion } from "framer-motion"; // Import Animation Library
+import { motion } from "framer-motion"; 
 import { 
   MapPin, Calendar, Flag, Mountain, Info, Lightbulb, User, 
-  Utensils, BedDouble, Navigation, ArrowRight, X, ChevronLeft, ChevronRight, QrCode
+  Utensils, BedDouble, Navigation, ArrowRight, X, ChevronLeft, ChevronRight, QrCode, ShieldCheck
 } from "lucide-react";
 import { db } from "../services/firebase";
 
 export default function StoryDetail() {
   const { storyId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation(); // Hook to check for Admin View state
   const auth = getAuth();
   
   const [story, setStory] = useState(null);
@@ -23,6 +24,9 @@ export default function StoryDetail() {
   const [fullGallery, setFullGallery] = useState([]);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
   const [showQr, setShowQr] = useState(false);
+
+  // Check if we are in Admin View Mode
+  const isAdminView = location.state?.adminView === true;
 
   useEffect(() => {
     if (!storyId) return;
@@ -39,7 +43,10 @@ export default function StoryDetail() {
 
         const storyData = storySnap.data();
         const currentUserId = auth.currentUser?.uid;
-        if (!storyData.published && storyData.authorId !== currentUserId) {
+        
+        // 🛡️ SECURITY CHECK 🛡️
+        // If NOT published AND NOT the author AND NOT an admin preview -> Kick out
+        if (!storyData.published && storyData.authorId !== currentUserId && !isAdminView) {
           navigate("/dashboard");
           return;
         }
@@ -88,7 +95,7 @@ export default function StoryDetail() {
       }
     }
     fetchStoryAndAuthor();
-  }, [storyId, navigate, auth]);
+  }, [storyId, navigate, auth, isAdminView]);
 
   // --- LIGHTBOX LOGIC ---
   const openLightbox = (url) => {
@@ -129,6 +136,13 @@ export default function StoryDetail() {
   return (
     <div className="bg-white min-h-screen pb-20">
       
+      {/* 🛡️ ADMIN PREVIEW BANNER */}
+      {isAdminView && (
+          <div className="bg-orange-600 text-white text-center py-2 px-4 text-sm font-bold sticky top-0 z-[60] shadow-md flex items-center justify-center gap-2 animate-in slide-in-from-top">
+              <ShieldCheck size={16}/> ADMIN PREVIEW MODE
+          </div>
+      )}
+
       {/* --- HERO HEADER --- */}
       <div className="relative h-[70vh] w-full bg-slate-900">
         {story.coverImage ? (
@@ -183,7 +197,7 @@ export default function StoryDetail() {
           </div>
           <div className="flex-1 flex justify-end gap-3">
              
-             {/* ✅ FIXED QR CODE SECTION */}
+             {/* QR CODE SECTION */}
              <div className="relative">
                 <button 
                     onClick={() => setShowQr(!showQr)}
@@ -213,9 +227,8 @@ export default function StoryDetail() {
           </div>
         </div>
 
-        {/* --- TIMELINE DAYS (WITH SCROLL ANIMATION) --- */}
+        {/* --- TIMELINE DAYS --- */}
         <div className="mt-16 space-y-12 relative">
-          {/* Vertical Line */}
           <div className="absolute left-[19px] top-4 bottom-0 w-0.5 bg-slate-200 hidden md:block" />
 
           {days.map((day, i) => (
@@ -225,16 +238,13 @@ export default function StoryDetail() {
               initial={{ opacity: 0, y: 50 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 0.5, ease: "easeOut", delay: i * 0.1 }} // Stagger effect
+              transition={{ duration: 0.5, ease: "easeOut", delay: i * 0.1 }}
             >
-              {/* Timeline Dot */}
               <div className="absolute left-0 top-0 w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold shadow-lg z-10 hidden md:flex border-4 border-white">
                 {day.dayNumber}
               </div>
 
-              {/* Day Card */}
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-xl transition-all duration-300 group hover:-translate-y-1">
-                 {/* Mobile Day Header */}
                  <div className="md:hidden bg-orange-50 px-4 py-2 border-b border-orange-100 flex items-center gap-2">
                     <span className="bg-orange-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">{day.dayNumber}</span>
                     <span className="font-semibold text-orange-800">Day {day.dayNumber}</span>
@@ -255,7 +265,6 @@ export default function StoryDetail() {
                     <h2 className="text-2xl font-bold text-slate-800 mb-4">{day.title}</h2>
                     <p className="text-slate-600 leading-relaxed text-lg whitespace-pre-line mb-6">{day.story}</p>
                     
-                    {/* ✅ PREMIUM DETAILS GRID */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {(day.departure || day.destination) && (
                             <DetailCard icon={<Navigation size={18} className="text-blue-600"/>} label="Route" bg="bg-blue-50" border="border-blue-100">
@@ -330,7 +339,6 @@ export default function StoryDetail() {
                         >
                             <img src={img.url} alt="Gallery" className="w-full h-auto transition-transform duration-500 group-hover:scale-110" />
                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            {/* Caption Preview */}
                             {img.caption && (
                                 <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black/90 to-transparent p-4 pt-12 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <p className="text-white text-xs truncate font-medium">{img.caption}</p>
@@ -365,14 +373,12 @@ export default function StoryDetail() {
                     className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
                 />
                 
-                {/* Caption Bar */}
                 {fullGallery[lightboxIndex].caption && (
                     <div className="mt-4 bg-white/10 backdrop-blur-md border border-white/10 px-6 py-3 rounded-full text-white text-center max-w-2xl shadow-lg">
                         {fullGallery[lightboxIndex].caption}
                     </div>
                 )}
 
-                {/* Watermark */}
                 <div className="absolute bottom-4 right-4 bg-black/50 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 text-white/90 text-sm font-semibold pointer-events-none select-none">
                     © {story.authorName} | JourneysPage
                 </div>
@@ -386,8 +392,6 @@ export default function StoryDetail() {
     </div>
   );
 }
-
-// --- SUB COMPONENTS ---
 
 const Badge = ({ icon, text, color }) => (
   text ? <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border backdrop-blur-sm ${color}`}>{icon} {text}</span> : null
