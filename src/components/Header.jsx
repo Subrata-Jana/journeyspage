@@ -63,16 +63,20 @@ export default function Header() {
     return () => unsub();
   }, []);
 
-  // --- 4. DYNAMIC STYLES (PREMIUM SHADOW ADDED) ---
+  // --- 4. DYNAMIC STYLES ---
   const navBackground = scrolled 
     ? "bg-white/90 dark:bg-[#0B0F19]/90 backdrop-blur-xl border-b border-slate-200/50 dark:border-white/5 shadow-sm" 
-    : "bg-transparent border-transparent py-6"; // Added extra padding when top for grandeur
+    : "bg-transparent border-transparent py-6"; 
 
-  // ⚡⚡⚡ PREMIUM SHADOW LOGIC HERE ⚡⚡⚡
+  // Main Text Color (Journeys)
   const textColor = scrolled
-    ? "text-slate-900 dark:text-white transition-all" // Clean look when scrolled on solid bg
-    // When at the top, use a multi-layered arbitrary text-shadow for premium depth
+    ? "text-slate-900 dark:text-white transition-all" 
     : "text-white [text-shadow:_0_2px_4px_rgb(0_0_0_/_50%),_0_10px_20px_rgb(0_0_0_/_30%)] transition-all"; 
+
+  // Subtitle Color (PAGE) - Needs to be visible on both white and dark/image backgrounds
+  const subtitleColor = scrolled
+    ? "text-slate-500 dark:text-slate-400" // Dark grey when scrolled (white bg)
+    : "text-slate-300 [text-shadow:_0_1px_2px_rgb(0_0_0_/_50%)]"; // Light grey when transparent (dark image bg)
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -104,24 +108,31 @@ export default function Header() {
             {/* A. The Image or Icon */}
             {siteLogo ? (
                 <img 
-                    src={siteLogo} 
-                    alt="Logo" 
-                    // Added a subtle drop-shadow to the image itself when at the top
-                    className={`h-16 w-auto object-contain transition-transform duration-500 group-hover:scale-105 ${!scrolled ? 'drop-shadow-[0_4px_6px_rgba(0,0,0,0.3)]' : ''}`} 
-                />
+                  src={siteLogo} 
+                  alt="Logo" 
+                  className={`h-16 w-auto object-contain transition-all duration-500 group-hover:scale-105 
+                      ${scrolled && !dark ? 'invert brightness' : ''} 
+                      ${!scrolled ? 'drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]' : ''}
+                  `} 
+              />
             ) : (
                 <div className="relative">
                     <div className="absolute inset-0 bg-orange-500 blur-2xl opacity-20 group-hover:opacity-40 transition-opacity duration-500"></div>
-                    <div className={`relative bg-gradient-to-br from-orange-500 to-red-600 p-2 rounded-2xl text-white shadow-xl transition-all duration-500 ${!scrolled ? 'scale-110' : 'scale-100'}`}>
+                    <div className={`relative bg-gradient-to-br from-orange-500 to-red-600 p-2 rounded-xl text-white shadow-xl transition-all duration-500 ${!scrolled ? 'scale-110' : 'scale-100'}`}>
                         <Compass size={24} />
                     </div>
                 </div>
             )}
 
-            {/* B. The Text with Premium Shadow */}
-            <span className={`font-extrabold text-2xl tracking-tight ${textColor}`}>
-                Journeys<span className="text-orange-500">Page</span>
-            </span>
+            {/* B. The Text Stacked (Journeys + PAGE) */}
+            <div className="flex flex-col -space-y1">
+                <span className={`font-bold text-2xl tracking-tight leading-none ${textColor}`}>
+                    Journeys
+                </span>
+                <span className={`text-[13px] font-bold uppercase tracking-[0.35em] leading-none ml-0.5 transition-colors duration-300 ${subtitleColor}`}>
+                    Page
+                </span>
+            </div>
           </Link>
 
           {/* DESKTOP NAV */}
@@ -142,7 +153,6 @@ export default function Header() {
               </>
             ) : (
               <>
-                {/* Added extra gap and bold font for premium feel */}
                 <div className={`flex items-center gap-8 text-sm font-bold tracking-wide transition-colors duration-300 ${textColor}`}>
                     <Link to="/dashboard" className="hover:text-orange-500 transition-all flex items-center gap-2 hover:-translate-y-0.5">
                         <LayoutDashboard size={18} className="opacity-80"/> DASHBOARD
@@ -222,7 +232,7 @@ export default function Header() {
             )}
           </nav>
 
-          {/* MOBILE TOGGLE (Updated styles) */}
+          {/* MOBILE TOGGLE */}
           <div className="md:hidden flex items-center gap-5">
               <button onClick={toggleTheme} className={`transition-all duration-300 hover:rotate-12 ${textColor}`}>
                  {dark ? <Sun size={24}/> : <Moon size={24}/>}
@@ -233,7 +243,7 @@ export default function Header() {
           </div>
         </div>
         
-        {/* MOBILE MENU (Kept mostly same, just ensuring dark mode support) */}
+        {/* MOBILE MENU */}
         <AnimatePresence>
             {mobileMenuOpen && (
                 <motion.div
@@ -271,7 +281,7 @@ export default function Header() {
         </AnimatePresence>
       </header>
 
-      {/* MODAL (Minor style tweaks for consistency) */}
+      {/* MODAL */}
       <Modal open={logoutOpen} onClose={() => setLogoutOpen(false)}>
         <div className="p-6 text-center">
             <div className="w-16 h-16 bg-red-100 dark:bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">

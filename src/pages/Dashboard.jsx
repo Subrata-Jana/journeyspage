@@ -11,7 +11,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import { useAuth } from "../contexts/AuthContext";
 import { db, storage } from "../services/firebase";
 import {
-  collection, query, where, getDocs, getDoc, orderBy, limit, deleteDoc, doc
+  collection, query, where, getDocs, getDoc, orderBy, limit, deleteDoc, doc, onSnapshot // ⚡ Added onSnapshot
 } from "firebase/firestore";
 import { ref, deleteObject } from "firebase/storage";
 
@@ -48,6 +48,20 @@ export default function Dashboard() {
   const toggleTheme = () => {
     setTheme((prev) => (prev === "light" ? "dark" : "light"));
   };
+
+  // --- ⚡ FETCH SITE LOGO ---
+  const [siteLogo, setSiteLogo] = useState(null);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "meta", "site_config"), (doc) => {
+      if (doc.exists() && doc.data().logoUrl) {
+        setSiteLogo(doc.data().logoUrl);
+      } else {
+        setSiteLogo(null);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   // --- ONBOARDING CHECK ---
   useEffect(() => {
@@ -150,15 +164,29 @@ export default function Dashboard() {
       {/* SIDEBAR */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-[#0B0F19]/95 backdrop-blur-2xl border-r border-slate-200 dark:border-white/5 p-6 flex flex-col transition-transform duration-300 lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         
-        {/* Logo */}
-        <div className="flex items-center gap-4 mb-12 px-2 relative">
-          <div className="relative w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center text-white shadow-xl shadow-orange-500/20 border border-white/10">
-            <Compass size={24} />
-          </div>
-          <div className="flex flex-col">
+        {/* ⚡ LOGO SECTION (UPDATED) */}
+        <div className="flex items-center gap-3 mb-12 px-2 relative">
+          {siteLogo ? (
+              // If Custom Logo exists
+              <img 
+                  src={siteLogo} 
+                  alt="Logo" 
+                  // Logic: If Theme is Light -> Invert White Logo to Black. If Dark -> Keep White.
+                  className={`h-12 w-auto object-contain transition-all duration-300 ${theme === 'light' ? 'invert brightness' : ''}`} 
+              />
+          ) : (
+              // Fallback Icon
+              <div className="relative w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center text-white shadow-xl shadow-orange-500/20 border border-white/10">
+                <Compass size={24} />
+              </div>
+          )}
+          
+          {/* Stacked Text */}
+          <div className="flex flex-col -space-y-0.5">
             <span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white leading-none">Journeys</span>
-            <span className="text-xs font-medium text-slate-400 tracking-[0.2em] uppercase">Page</span>
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 tracking-[0.35em] uppercase leading-none ml-[1px]">Page</span>
           </div>
+          
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden ml-auto text-slate-400 hover:text-white"><X size={24} /></button>
         </div>
 
@@ -170,13 +198,13 @@ export default function Dashboard() {
           
           {/* THEME TOGGLE & SETTINGS */}
           <div className="pt-8 pb-4 flex items-center justify-between px-4">
-             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Settings</span>
-             <button 
-               onClick={toggleTheme}
-               className="p-1.5 rounded-lg bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400 hover:text-orange-500 transition-colors"
-             >
-               {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
-             </button>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Settings</span>
+              <button 
+                onClick={toggleTheme}
+                className="p-1.5 rounded-lg bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400 hover:text-orange-500 transition-colors"
+              >
+                {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+              </button>
           </div>
 
           <NavItem icon={<Settings size={20}/>} label="Profile & Settings" onClick={() => navigate('/profile')} />
@@ -450,7 +478,7 @@ function StoryCard({ story, navigate, onDelete }) {
                     {story.month}
                 </div>
 
-                {/* 🔴 ADMIN NOTE ALERT (New Premium Feature) */}
+                {/* 🔴 ADMIN NOTE ALERT */}
                 {story.status === 'returned' && story.adminNotes && (
                     <div className="mb-4 p-3 bg-red-500/5 border border-red-500/10 rounded-lg text-xs">
                         <div className="flex items-center gap-1.5 text-red-500 font-bold mb-1">
@@ -464,7 +492,6 @@ function StoryCard({ story, navigate, onDelete }) {
                     <button onClick={() => navigate(`/story/${story.id}`)} className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 hover:bg-slate-100 dark:hover:bg-white/5 px-2 py-1 rounded-lg transition-colors"><Eye size={14}/> View</button>
                     
                     <div className="flex gap-1">
-                        {/* Pulse the Edit button if Returned */}
                         <button 
                             onClick={() => navigate(`/create-story?edit=${story.id}`)} 
                             className={`p-2 rounded-lg transition-colors ${story.status === 'returned' ? 'text-white bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/30 animate-pulse' : 'text-blue-500 hover:bg-blue-500/10'}`}
