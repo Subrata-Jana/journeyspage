@@ -97,6 +97,15 @@ function Layout() {
               </ProtectedRoute>
             }
           />
+          {/* 👇 NEW ROUTE ADDED (For "Viewing Other Profiles") */}
+          <Route
+            path="/profile/:id"
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
         </Routes>
       </main>
 

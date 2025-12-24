@@ -3,7 +3,8 @@ import {
   FileText, Image as ImageIcon, BarChart2, TrendingUp, Plus,
   Search, Settings, LogOut, Compass, Eye, Pencil, Trash2,
   Menu, X, Shield, Sparkles, Globe, Sun, Moon, MapPin, Gem,
-  AlertCircle, Clock, RotateCcw, CheckCircle
+  AlertCircle, Clock, RotateCcw, CheckCircle,
+  Users, Zap // ⚡ Icons for Travel Hub Tabs
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import toast, { Toaster } from 'react-hot-toast';
@@ -11,7 +12,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import { useAuth } from "../contexts/AuthContext";
 import { db, storage } from "../services/firebase";
 import {
-  collection, query, where, getDocs, getDoc, orderBy, limit, deleteDoc, doc, onSnapshot // ⚡ Added onSnapshot
+  collection, query, where, getDocs, getDoc, orderBy, limit, deleteDoc, doc, onSnapshot
 } from "firebase/firestore";
 import { ref, deleteObject } from "firebase/storage";
 
@@ -28,6 +29,9 @@ export default function Dashboard() {
   const [loadingStories, setLoadingStories] = useState(true);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   
+  // --- TRAVEL HUB STATE ---
+  const [hubTab, setHubTab] = useState("tracking"); // 'tracking' | 'explore'
+
   // --- SEARCH & FILTER ---
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all"); 
@@ -106,7 +110,12 @@ export default function Dashboard() {
   };
 
   // --- DELETE STORY ---
-  const handleDeleteDraft = async (id) => {
+  const handleDeleteDraft = async (id, status, published) => {
+    // 🛡️ SECURITY CHECK: Prevent deletion if Pending or Approved
+    if (published && status !== 'returned') {
+        return toast.error("Cannot delete a story while it is under review or approved.");
+    }
+
     if (!window.confirm(`Delete this story permanently?`)) return;
     const toastId = toast.loading("Deleting...");
     try {
@@ -164,24 +173,20 @@ export default function Dashboard() {
       {/* SIDEBAR */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-[#0B0F19]/95 backdrop-blur-2xl border-r border-slate-200 dark:border-white/5 p-6 flex flex-col transition-transform duration-300 lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         
-        {/* ⚡ LOGO SECTION (UPDATED) */}
+        {/* ⚡ LOGO SECTION */}
         <div className="flex items-center gap-3 mb-12 px-2 relative">
           {siteLogo ? (
-              // If Custom Logo exists
               <img 
                   src={siteLogo} 
                   alt="Logo" 
-                  // Logic: If Theme is Light -> Invert White Logo to Black. If Dark -> Keep White.
                   className={`h-12 w-auto object-contain transition-all duration-300 ${theme === 'light' ? 'invert brightness' : ''}`} 
               />
           ) : (
-              // Fallback Icon
               <div className="relative w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center text-white shadow-xl shadow-orange-500/20 border border-white/10">
                 <Compass size={24} />
               </div>
           )}
           
-          {/* Stacked Text */}
           <div className="flex flex-col -space-y-0.5">
             <span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white leading-none">Journeys</span>
             <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 tracking-[0.35em] uppercase leading-none ml-[1px]">Page</span>
@@ -193,7 +198,8 @@ export default function Dashboard() {
         {/* Navigation */}
         <nav className="space-y-2 flex-1">
           <NavItem icon={<BarChart2 size={20}/>} label="Overview" active={currentView === 'overview'} onClick={() => setCurrentView('overview')} />
-          <NavItem icon={<Globe size={20}/>} label="Community Feed" active={currentView === 'feed'} onClick={() => setCurrentView('feed')} />
+          {/* ⚡ UPDATED TO TRAVEL HUB */}
+          <NavItem icon={<Globe size={20}/>} label="Travel Hub" active={currentView === 'feed'} onClick={() => setCurrentView('feed')} />
           <NavItem icon={<FileText size={20}/>} label="My Stories" active={currentView === 'stories'} onClick={() => setCurrentView('stories')} />
           
           {/* THEME TOGGLE & SETTINGS */}
@@ -252,7 +258,7 @@ export default function Dashboard() {
             <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 text-slate-400 hover:text-white"><Menu size={20} /></button>
             <h1 className="text-xl font-semibold hidden sm:block capitalize bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">
                 {currentView === 'overview' && 'Dashboard Overview'}
-                {currentView === 'feed' && 'Explore Community'}
+                {currentView === 'feed' && 'Travel Hub'} 
                 {currentView === 'stories' && 'Your Journey Log'}
             </h1>
           </div>
@@ -279,7 +285,7 @@ export default function Dashboard() {
                                   {userProfile?.rankName || "Novice Explorer"}
                               </h2>
                               <p className="text-white/80 text-sm font-medium flex items-center gap-2">
-                                 Level {userProfile?.level || 1} • {userProfile?.points || 0} Points
+                                  Level {userProfile?.level || 1} • {userProfile?.points || 0} Points
                               </p>
                            </div>
                         </div>
@@ -305,7 +311,6 @@ export default function Dashboard() {
                             </div>
                         </div>
                     </div>
-                    {/* Background decoration */}
                     <div className="absolute -right-10 -bottom-10 opacity-10"><Compass size={200}/></div>
                 </div>
 
@@ -327,10 +332,42 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* VIEW 2: COMMUNITY FEED */}
+          {/* VIEW 2: TRAVEL HUB (Formerly Community Feed) */}
           {currentView === 'feed' && (
-             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <Feed />
+             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+                
+                {/* ⚡ HUB HEADER & TABS */}
+                <div className="bg-white dark:bg-[#111625]/40 p-6 rounded-2xl border border-slate-200 dark:border-white/5 backdrop-blur-sm">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                        <div>
+                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <Globe className="text-orange-500"/> Travel Hub
+                            </h2>
+                            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
+                                Where all journeys connect.
+                            </p>
+                        </div>
+                        
+                        {/* TAB SWITCHER */}
+                        <div className="flex p-1 bg-slate-100 dark:bg-white/5 rounded-xl">
+                            <button 
+                                onClick={() => setHubTab("tracking")}
+                                className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${hubTab === "tracking" ? "bg-white dark:bg-[#0B0F19] text-orange-500 shadow-sm" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                            >
+                                <Users size={16}/> Tracking
+                            </button>
+                            <button 
+                                onClick={() => setHubTab("explore")}
+                                className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${hubTab === "explore" ? "bg-white dark:bg-[#0B0F19] text-blue-500 shadow-sm" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                            >
+                                <Zap size={16}/> Explore
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ⚡ PASS THE TAB STATE TO FEED COMPONENT */}
+                <Feed activeTab={hubTab} />
              </div>
           )}
 
@@ -348,7 +385,6 @@ export default function Dashboard() {
                             onChange={e => setSearchQuery(e.target.value)}
                         />
                     </div>
-                    {/* NEW FILTERS */}
                     <div className="flex bg-white dark:bg-white/5 p-1 rounded-xl border border-slate-200 dark:border-white/5 self-start overflow-x-auto">
                         {[
                            { id: 'all', label: 'All' },
@@ -411,22 +447,26 @@ const getStatusConfig = (story) => {
     if (story.status === 'returned') return { 
         label: "NEEDS REVISION", 
         color: "bg-red-500/10 text-red-500 border-red-500/20", 
-        icon: <RotateCcw size={10} strokeWidth={3}/> 
+        icon: <RotateCcw size={10} strokeWidth={3}/>,
+        canEdit: true
     };
     if (story.status === 'approved') return { 
         label: "PUBLISHED", 
         color: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20", 
-        icon: <CheckCircle size={10} strokeWidth={3}/> 
+        icon: <CheckCircle size={10} strokeWidth={3}/>,
+        canEdit: false // ⚡ LOCKED
     };
     if (story.published) return { 
         label: "IN REVIEW", 
         color: "bg-blue-500/10 text-blue-500 border-blue-500/20", 
-        icon: <Clock size={10} strokeWidth={3}/> 
+        icon: <Clock size={10} strokeWidth={3}/>,
+        canEdit: false // ⚡ LOCKED
     };
     return { 
         label: "DRAFT", 
         color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20", 
-        icon: <FileText size={10} strokeWidth={3}/> 
+        icon: <FileText size={10} strokeWidth={3}/>,
+        canEdit: true
     };
 };
 
@@ -442,7 +482,10 @@ function StoryRow({ story, navigate, onDelete }) {
         <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-2 py-1 rounded border ${status.color}`}>
             {status.icon} {status.label}
         </span>
-        <button onClick={() => navigate(`/create-story?edit=${story.id}`)} className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors"><Pencil size={16}/></button>
+        {/* ⚡ CONDITIONAL EDIT BUTTON */}
+        {status.canEdit && (
+            <button onClick={() => navigate(`/create-story?edit=${story.id}`)} className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors"><Pencil size={16}/></button>
+        )}
       </div>
     </div>
   )
@@ -492,14 +535,25 @@ function StoryCard({ story, navigate, onDelete }) {
                     <button onClick={() => navigate(`/story/${story.id}`)} className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 hover:bg-slate-100 dark:hover:bg-white/5 px-2 py-1 rounded-lg transition-colors"><Eye size={14}/> View</button>
                     
                     <div className="flex gap-1">
-                        <button 
-                            onClick={() => navigate(`/create-story?edit=${story.id}`)} 
-                            className={`p-2 rounded-lg transition-colors ${story.status === 'returned' ? 'text-white bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/30 animate-pulse' : 'text-blue-500 hover:bg-blue-500/10'}`}
-                            title={story.status === 'returned' ? "Fix Issues" : "Edit Story"}
-                        >
-                            <Pencil size={14}/>
-                        </button>
-                        <button onClick={() => onDelete(story.id)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 size={14}/></button>
+                        {/* ⚡ CONDITIONAL EDIT ACTIONS */}
+                        {status.canEdit && (
+                            <>
+                                <button 
+                                    onClick={() => navigate(`/create-story?edit=${story.id}`)} 
+                                    className={`p-2 rounded-lg transition-colors ${story.status === 'returned' ? 'text-white bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/30 animate-pulse' : 'text-blue-500 hover:bg-blue-500/10'}`}
+                                    title="Edit Story"
+                                >
+                                    <Pencil size={14}/>
+                                </button>
+                                <button 
+                                    onClick={() => onDelete(story.id, story.status, story.published)} 
+                                    className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                                    title="Delete Story"
+                                >
+                                    <Trash2 size={14}/>
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

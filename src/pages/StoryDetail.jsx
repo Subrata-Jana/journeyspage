@@ -9,10 +9,24 @@ import {
   MapPin, Calendar, Flag, Mountain, Info, Lightbulb, User, 
   Utensils, BedDouble, Navigation, ArrowRight, X, ChevronLeft, ChevronRight, 
   QrCode, ShieldCheck, Share2, Heart, MessageSquare, Send, 
-  ArrowLeft, Sun, Moon, UserPlus, Check 
+  ArrowLeft, Sun, Moon, Footprints, Check 
 } from "lucide-react";
+import * as LucideIcons from "lucide-react"; 
 import toast from "react-hot-toast"; 
 import { db } from "../services/firebase";
+import { useMetaOptions } from "../hooks/useMetaOptions"; 
+
+// --- HELPER: Get Color Hex from Name ---
+const getColorHex = (name) => {
+  const colors = {
+    slate: '#64748b', red: '#ef4444', orange: '#f97316', amber: '#f59e0b',
+    yellow: '#eab308', lime: '#84cc16', green: '#22c55e', emerald: '#10b981',
+    teal: '#14b8a6', cyan: '#06b6d4', sky: '#0ea5e9', blue: '#3b82f6',
+    indigo: '#6366f1', violet: '#8b5cf6', purple: '#a855f7', fuchsia: '#d946ef',
+    pink: '#ec4899', rose: '#f43f5e'
+  };
+  return colors[name?.toLowerCase()] || '#94a3b8';
+};
 
 export default function StoryDetail() {
   const { storyId } = useParams();
@@ -21,6 +35,11 @@ export default function StoryDetail() {
   const auth = getAuth();
   const currentUser = auth.currentUser;
   
+  // ⚡ 1. FETCH ALL META DATA LISTS ⚡
+  const { options: categories } = useMetaOptions("categories");
+  const { options: tripTypes } = useMetaOptions("tripTypes");       // <-- ADDED
+  const { options: difficulties } = useMetaOptions("difficultyLevels"); // <-- ADDED
+
   const [story, setStory] = useState(null);
   const [authorProfile, setAuthorProfile] = useState(null);
   const [days, setDays] = useState([]);
@@ -31,16 +50,20 @@ export default function StoryDetail() {
   const [newComment, setNewComment] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);
 
-  // ❤️ SOCIAL STATE (Counts & Follow)
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [hasLiked, setHasLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(0);
-  const [shareCount, setShareCount] = useState(0);
-
   // 🖼️ GALLERY & LIGHTBOX STATE
   const [fullGallery, setFullGallery] = useState([]);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
   const [showQr, setShowQr] = useState(false);
+
+  // 📊 REAL-TIME SOCIAL STATE
+  const [isTracking, setIsTracking] = useState(false);
+  const [trackersCount, setTrackersCount] = useState(0); 
+  
+  const [hasLiked, setHasLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  
+  const [hasShared, setHasShared] = useState(false);
+  const [shareCount, setShareCount] = useState(0);
 
   const isAdminView = location.state?.adminView === true;
 
@@ -64,7 +87,6 @@ export default function StoryDetail() {
     }
   }, [isDark]);
 
-  // ⚡ SCROLL PROGRESS
   const { scrollYProgress } = useScroll();
   const scaleX = useSpring(scrollYProgress, {
     stiffness: 100,
@@ -72,7 +94,7 @@ export default function StoryDetail() {
     restDelta: 0.001
   });
 
-  // --- 1. FETCH STORY DATA ---
+  // --- FETCH STORY & AUTHOR DATA ---
   useEffect(() => {
     if (!storyId) return;
 
@@ -88,19 +110,26 @@ export default function StoryDetail() {
 
         const storyData = storySnap.data();
         
-        // Initialize counts from DB
-        setLikeCount(storyData.likes || 0);
-        setShareCount(storyData.shares || 0);
-
         if (!storyData.published && storyData.authorId !== currentUser?.uid && !isAdminView) {
           navigate("/dashboard");
           return;
         }
 
+        setLikeCount(storyData.likes || 0);
+        setShareCount(storyData.shares || 0);
+
         if (storyData.authorId) {
             try {
                 const userDoc = await getDoc(doc(db, "users", storyData.authorId));
-                if (userDoc.exists()) setAuthorProfile(userDoc.data());
+                if (userDoc.exists()) {
+                    const userData = userDoc.data();
+                    setAuthorProfile(userData);
+                    const realCount = userData.trackers ? userData.trackers.length : (userData.trackersCount || 0);
+                    setTrackersCount(realCount);
+                    if (currentUser && userData.trackers && userData.trackers.includes(currentUser.uid)) {
+                        setIsTracking(true);
+                    }
+                }
             } catch (err) { console.error(err); }
         }
 
@@ -142,7 +171,7 @@ export default function StoryDetail() {
     fetchStoryAndAuthor();
   }, [storyId, navigate, currentUser, isAdminView]);
 
-  // --- 2. FETCH REAL-TIME COMMENTS ---
+  // --- FETCH REAL-TIME COMMENTS ---
   useEffect(() => {
     if (!storyId) return;
     const commentsRef = collection(db, "stories", storyId, "comments");
@@ -154,11 +183,42 @@ export default function StoryDetail() {
     return () => unsubscribe();
   }, [storyId]);
 
-  // --- 3. HANDLERS ---
+  // --- SOCIAL HANDLERS ---
+  const handleTrack = async () => {
+    if (!currentUser) return toast.error("Please login to track scouts");
+    const newStatus = !isTracking;
+    setIsTracking(newStatus);
+    setTrackersCount(prev => newStatus ? prev + 1 : prev - 1);
+    if (newStatus) {
+        toast.success("Tracking! Added to your Journey Radar.");
+    } else {
+        toast("Un-tracked. Removed from Radar.");
+    }
+  };
+
+  const handleLike = () => {
+    if (hasLiked) {
+        setLikeCount(prev => prev - 1);
+        setHasLiked(false);
+    } else {
+        setLikeCount(prev => prev + 1);
+        setHasLiked(true);
+        toast.success("Liked!");
+    }
+  };
+
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href);
+    toast.success("Link copied to clipboard!");
+    if (!hasShared) {
+        setShareCount(prev => prev + 1);
+        setHasShared(true);
+    }
+  };
+
   const handlePostComment = async () => {
       if (!newComment.trim()) return;
       if (!currentUser) return toast.error("Please login to comment");
-      
       setSubmittingComment(true);
       try {
           await addDoc(collection(db, "stories", storyId, "comments"), {
@@ -178,31 +238,7 @@ export default function StoryDetail() {
       }
   };
 
-  const handleFollow = () => {
-      if (!currentUser) return toast.error("Login to follow");
-      setIsFollowing(!isFollowing);
-      toast.success(isFollowing ? "Unfollowed Author" : "Following Author!");
-  };
-
-  const handleLike = () => {
-      if (!currentUser) return toast.error("Login to like");
-      if (hasLiked) {
-          setLikeCount(prev => prev - 1);
-          setHasLiked(false);
-      } else {
-          setLikeCount(prev => prev + 1);
-          setHasLiked(true);
-          toast.success("Liked!");
-      }
-  };
-
-  const handleShare = () => {
-      setShareCount(prev => prev + 1);
-      navigator.clipboard.writeText(window.location.href);
-      toast.success("Link copied to clipboard!");
-  };
-
-  // --- LIGHTBOX LOGIC ---
+  // --- LIGHTBOX ---
   const openLightbox = (url) => {
     const idx = fullGallery.findIndex(img => img.url === url);
     if (idx !== -1) setLightboxIndex(idx);
@@ -234,6 +270,26 @@ export default function StoryDetail() {
     const match = url.match(regExp);
     return (match && match[2].length === 11) ? match[2] : null;
   };
+
+  // ⚡ 2. DYNAMIC LOOKUP HELPERS ⚡
+  // Match stored ID ("8") to Label ("Mountains")
+  const categoryData = story?.category 
+    ? categories.find(c => c.value === story.category || c.label === story.category) 
+    : null;
+    
+  const tripTypeData = story?.tripType
+    ? tripTypes.find(t => t.value === story.tripType || t.label === story.tripType)
+    : null;
+
+  const difficultyData = story?.difficulty
+    ? difficulties.find(d => d.value === story.difficulty || d.label === story.difficulty)
+    : null;
+
+  const CategoryIcon = categoryData && LucideIcons[categoryData.icon] 
+    ? LucideIcons[categoryData.icon] 
+    : null;
+    
+  const categoryColor = categoryData ? getColorHex(categoryData.color) : "#fff";
 
   if (loading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">Loading Journey...</div>;
   if (!story) return null;
@@ -288,11 +344,12 @@ export default function StoryDetail() {
           <div className="w-full h-full flex items-center justify-center text-white/20">No Cover</div>
         )}
         
-        {/* Dark Overlay */}
+        {/* Cinematic Gradient */}
         <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-[#0B0F19]/20 to-transparent" />
         
-        {/* CENTERED HERO CONTENT */}
+        {/* Hero Content - CENTERED */}
         <div className="absolute bottom-0 inset-0 z-20 left-0 w-full p-4 md:p-12 lg:p-20 pb-16 lg:pb-40 max-w-7xl mx-auto flex flex-col items-center justify-end h-full pointer-events-none text-center">
+            
             <div className="pointer-events-auto space-y-4 md:space-y-6 animate-in fade-in slide-in-from-bottom-12 duration-1000">
                 {/* Location Badge */}
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white text-xs md:text-sm font-bold uppercase tracking-wider">
@@ -301,22 +358,44 @@ export default function StoryDetail() {
                 </div>
 
                 {/* Massive Title */}
-                <h1 className="text-4xl md:text-7xl lg:text-9xl font-black text-white leading-[1.1] md:leading-[0.9] tracking-tight drop-shadow-2xl">
+                <h1 className="text-4xl md:text-7xl lg:text-8xl font-black text-white leading-[1.1] md:leading-[0.9] tracking-tight drop-shadow-2xl">
                     {story.title}
                 </h1>
 
-                {/* Meta Bar */}
+                {/* Meta Bar - CENTERED */}
                 <div className="flex flex-wrap items-center justify-center gap-4 md:gap-8 text-white/90 font-medium text-sm md:text-lg pt-2 md:pt-4">
                     <div className="flex items-center gap-2.5">
                         <Calendar size={16} md:size={20} className="text-orange-400"/> {story.month}
                     </div>
+
+                    {/* ⚡ DYNAMIC CATEGORY BADGE */}
+                    {categoryData && (
+                        <>
+                          <div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/>
+                          <div 
+                            className="flex items-center gap-2 px-3 py-1 rounded-full border border-white/20 backdrop-blur-md"
+                            style={{ backgroundColor: `${categoryColor}20` }}
+                          >
+                             {CategoryIcon && <CategoryIcon size={16} style={{ color: categoryColor }} />}
+                             <span style={{ color: categoryColor }} className="font-bold text-sm">
+                               {categoryData.label}
+                             </span>
+                          </div>
+                        </>
+                    )}
+
+                    {/* ⚡ UPDATED: TRIP TYPE LOOKUP */}
                     <div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/>
                     <div className="flex items-center gap-2.5">
-                        <Flag size={16} md:size={20} className="text-emerald-400"/> {story.tripType}
+                        <Flag size={16} md:size={20} className="text-emerald-400"/> 
+                        {tripTypeData ? tripTypeData.label : story.tripType}
                     </div>
+
+                    {/* ⚡ UPDATED: DIFFICULTY LOOKUP */}
                     <div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/>
                     <div className="flex items-center gap-2.5">
-                        <Mountain size={16} md:size={20} className="text-rose-400"/> {story.difficulty}
+                        <Mountain size={16} md:size={20} className="text-rose-400"/> 
+                        {difficultyData ? difficultyData.label : story.difficulty}
                     </div>
                 </div>
             </div>
@@ -324,17 +403,18 @@ export default function StoryDetail() {
       </div>
 
       {/* --- MAIN CONTENT GRID --- */}
+      {/* ... (Rest of your component remains unchanged) ... */}
       <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-10 mt-0 lg:-mt-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
             
-            {/* LEFT: Sticky Sidebar (Author Card) */}
-            <div className="lg:col-span-4 space-y-6 md:space-y-8 h-fit lg:sticky lg:top-32 mt-0 lg:mt-32 order-1 lg:order-none z-20">
+            {/* LEFT: Sticky Sidebar */}
+            <div className="lg:col-span-4 space-y-6 md:space-y-8 h-fit lg:sticky lg:top-32 mt-0 lg:mt-32 order-1 lg:order-none">
                 
-                {/* 1. 🌟 AUTHOR CARD (With Follow & Counts) */}
+                {/* 1. 🌟 PREMIUM AUTHOR & TRACKER CARD */}
                 <div className="bg-white dark:bg-[#151b2b] p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] shadow-2xl border border-slate-100 dark:border-white/5 relative overflow-hidden transition-colors duration-300">
                     {/* Author Header */}
                     <div className="flex items-center gap-4 md:gap-5 mb-6 md:mb-8">
-                        <div className="relative">
+                        <div className="relative shrink-0">
                             <div className="w-16 h-16 md:w-20 md:h-20 rounded-full p-1 bg-white dark:bg-[#151b2b] shadow-lg">
                                 <img 
                                     src={authorProfile?.photoURL || `https://ui-avatars.com/api/?name=${story.authorName}`} 
@@ -343,27 +423,40 @@ export default function StoryDetail() {
                                 />
                             </div>
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                             <div className="flex justify-between items-start">
                                 <div>
                                     <div className="text-[10px] md:text-xs font-bold text-orange-500 tracking-widest uppercase mb-1">
                                         {authorProfile?.badge || "SCOUT"}
                                     </div>
-                                    <h3 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white leading-none">
+                                    <h3 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white leading-none truncate pr-2">
                                         {story.authorName}
                                     </h3>
                                 </div>
-                                {/* ⚡ FOLLOW BUTTON */}
+                                
+                                {/* 👣 TRACK BUTTON */}
                                 <button 
-                                    onClick={handleFollow}
-                                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all border flex items-center gap-1 ${
-                                        isFollowing 
-                                        ? "bg-transparent border-slate-300 text-slate-500 dark:border-white/20 dark:text-slate-400" 
-                                        : "bg-orange-500 border-orange-500 text-white hover:bg-orange-600"
-                                    }`}
+                                    onClick={handleTrack}
+                                    className={`
+                                        flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all border shrink-0
+                                        ${isTracking 
+                                            ? "bg-transparent border-slate-300 dark:border-white/20 text-slate-500 dark:text-slate-400" 
+                                            : "bg-orange-500 border-orange-500 text-white hover:bg-orange-600 shadow-md hover:shadow-lg"
+                                        }
+                                    `}
                                 >
-                                    {isFollowing ? <><Check size={12}/> Following</> : <><UserPlus size={12}/> Follow</>}
+                                    {isTracking ? (
+                                        <>Tracking <Check size={12}/></>
+                                    ) : (
+                                        <><Footprints size={12}/> Track +</>
+                                    )}
                                 </button>
+                            </div>
+                            
+                            {/* Tracker Count (Dynamic) */}
+                            <div className="text-[10px] text-slate-400 mt-1.5 font-medium flex items-center gap-1">
+                                <span className={`w-1.5 h-1.5 rounded-full ${trackersCount > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}/>
+                                {trackersCount} Trackers on Radar
                             </div>
                         </div>
                     </div>
@@ -397,7 +490,7 @@ export default function StoryDetail() {
                                 : "bg-slate-100 dark:bg-white/5 text-slate-900 dark:text-white hover:bg-slate-200 dark:hover:bg-white/10"
                             }`}
                         >
-                            <Heart size={18} md:size={20} className={hasLiked ? "fill-current" : ""}/> 
+                            <Heart size={18} md:size={20} className={hasLiked ? "fill-current" : ""} /> 
                             <span>{hasLiked ? "Liked" : "Like"}</span>
                             <span className="bg-black/5 dark:bg-white/10 px-2 py-0.5 rounded-full text-xs ml-1 opacity-70">
                                 {likeCount}
@@ -406,7 +499,7 @@ export default function StoryDetail() {
                         
                         <button 
                             onClick={handleShare}
-                            className="flex-1 py-3 md:py-4 rounded-xl md:rounded-2xl bg-[#0B0F19] dark:bg-white text-white dark:text-[#0B0F19] font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-lg text-sm md:text-base"
+                            className="flex-1 py-3 md:py-4 rounded-xl md:rounded-2xl bg-[#0B0F19] dark:bg-white text-white dark:text-[#0B0F19] font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-lg text-sm md:text-base hover:scale-[1.02]"
                         >
                             <Share2 size={18} md:size={20}/> 
                             <span>Share</span>
@@ -587,7 +680,7 @@ export default function StoryDetail() {
             </div>
         )}
 
-        {/* --- 💬 COMMENTS SECTION --- */}
+        {/* --- 💬 COMMENTS SECTION (NEW) --- */}
         <div className="mt-24 md:mt-32 max-w-4xl mx-auto px-4 md:px-6 border-t border-slate-200 dark:border-white/10 pt-16">
             <h3 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mb-8">Discussion ({comments.length})</h3>
 

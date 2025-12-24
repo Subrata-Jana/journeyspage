@@ -143,7 +143,14 @@ export default function AdminPanel() {
             {activeTab === "moderation" && <StoryModeration isDark={isDarkMode}/>}
             {activeTab === "branding" && <LogoManager isDark={isDarkMode}/>} {/* ⚡ NEW: LOGO MANAGER */}
             {activeTab === "tripTypes" && <MetaEditor title="Trip Types" docId="tripTypes" fields={['label', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
-            {activeTab === "categories" && <MetaEditor title="Categories" docId="categories" fields={['label']} isDark={isDarkMode}/>}
+            {activeTab === "categories" && (
+  <MetaEditor 
+    title="Categories (Terrain)" 
+    docId="categories" 
+    fields={['label', 'value', 'description', 'color', 'icon']} 
+    isDark={isDarkMode}
+  />
+)}
             {activeTab === "difficultyLevels" && <MetaEditor title="Difficulty Levels" docId="difficultyLevels" fields={['label', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
             {activeTab === "badges" && <MetaEditor title="Badges" docId="badges" fields={['name', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
             {activeTab === "ranks" && <MetaEditor title="Ranks" docId="ranks" fields={['name', 'threshold', 'perk', 'color', 'icon']} isDark={isDarkMode}/>}
