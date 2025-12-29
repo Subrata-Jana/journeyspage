@@ -3,7 +3,7 @@ import {
   Plus, Trash2, ChevronDown, ChevronUp, Save, Send,
   Camera, Image as ImageIcon, Loader2, AlertCircle,
   Youtube, Info, Lightbulb, Type, Check, X,
-  ArrowLeft, Sun, Moon, ShieldCheck, AlertTriangle 
+  ArrowLeft, Sun, Moon, ShieldCheck, AlertTriangle, Globe2 
 } from "lucide-react";
 import * as LucideIcons from "lucide-react"; 
 import { motion, AnimatePresence } from "framer-motion";
@@ -140,9 +140,15 @@ export default function CreateStory() {
 
         const galleryData = (data.gallery || []).map(item => {
           if (typeof item === 'string') {
-            return { url: item, caption: "", file: null, preview: item };
+            return { url: item, caption: "", is360: false, file: null, preview: item };
           }
-          return { url: item.url, caption: item.caption || "", file: null, preview: item.url };
+          return { 
+            url: item.url, 
+            caption: item.caption || "", 
+            is360: item.is360 || false, 
+            file: null, 
+            preview: item.url 
+          };
         });
 
         setTrip({
@@ -179,10 +185,30 @@ export default function CreateStory() {
   }, [editId, user, navigate]);
 
   /* -------------------- HELPERS & HANDLERS -------------------- */
-  const compressImage = async (file) => {
-    const options = { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true, fileType: "image/jpeg" };
+  
+  // ⚡ SMART COMPRESSION: Handles Standard vs High Quality (360)
+  const compressImage = async (file, type = 'standard') => {
+    // Standard: 1920px, 1MB (Fast loading for normal photos)
+    let options = { 
+        maxSizeMB: 1, 
+        maxWidthOrHeight: 1920, 
+        useWebWorker: true, 
+        fileType: "image/jpeg" 
+    };
+
+    // 360 Mode: 4096px (4K), 4MB (High detail for panoramas)
+    if (type === 'panorama') {
+        options = {
+            maxSizeMB: 4, 
+            maxWidthOrHeight: 4096, 
+            useWebWorker: true, 
+            fileType: "image/jpeg" 
+        };
+    }
+
     try {
-      if (file.size / 1024 / 1024 < 1) return file;
+      // Don't compress small files unnecessarily
+      if (file.size / 1024 / 1024 < options.maxSizeMB) return file;
       return await imageCompression(file, options);
     } catch (error) {
       console.error("Compression error:", error);
@@ -217,27 +243,57 @@ export default function CreateStory() {
   const handleCoverImageChange = async (file) => {
     if (!file) return;
     if (!trip.coverImagePreview && totalImagesCount >= MAX_IMAGES) return alert(`Image limit reached (${MAX_IMAGES} total).`);
-    const compressedFile = await compressImage(file);
+    const compressedFile = await compressImage(file, 'standard');
     setTrip(p => ({ ...p, coverImageFile: compressedFile, coverImagePreview: URL.createObjectURL(compressedFile) }));
   };
 
   const handleDayImageChange = async (index, file) => {
     if (!file) return;
     if (!trip.days[index].imagePreview && totalImagesCount >= MAX_IMAGES) return alert(`Image limit reached (${MAX_IMAGES} total).`);
-    const compressedFile = await compressImage(file);
+    const compressedFile = await compressImage(file, 'standard');
     const days = [...trip.days];
     days[index].imageFile = compressedFile;
     days[index].imagePreview = URL.createObjectURL(compressedFile);
     setTrip(p => ({ ...p, days }));
   };
 
+  // 📷 STANDARD UPLOAD (1920px)
   const handleGalleryUpload = async (files) => {
     if (!files) return;
     const filesArray = Array.from(files);
     if (filesArray.length > (MAX_IMAGES - totalImagesCount)) return alert(`Limit exceeded.`);
+    
     const newPhotos = await Promise.all(filesArray.map(async (file) => {
-        const compressedFile = await compressImage(file);
-        return { url: "", caption: "", file: compressedFile, preview: URL.createObjectURL(compressedFile) };
+        const compressedFile = await compressImage(file, 'standard');
+        return { url: "", caption: "", is360: false, file: compressedFile, preview: URL.createObjectURL(compressedFile) };
+    }));
+    setTrip(p => ({ ...p, gallery: [...p.gallery, ...newPhotos] }));
+  };
+
+// 🌐 360 UPLOAD (Restricted to 1 Image)
+  const handle360Upload = async (files) => {
+    if (!files) return;
+    
+    // 1. CHECK: Is there already a 360 photo?
+    const existing360 = trip.gallery.find(img => img.is360);
+    if (existing360) {
+        return alert("You can only upload ONE 360° panorama per story.");
+    }
+
+    const filesArray = Array.from(files);
+    
+    // 2. CHECK: Did they try to upload multiple at once?
+    if (filesArray.length > 1) {
+        return alert("Please select only ONE 360° photo.");
+    }
+
+    if (filesArray.length > (MAX_IMAGES - totalImagesCount)) return alert(`Limit exceeded.`);
+    
+    const newPhotos = await Promise.all(filesArray.map(async (file) => {
+        // Use 'panorama' mode for higher quality
+        const compressedFile = await compressImage(file, 'panorama');
+        // Auto set is360 to true
+        return { url: "", caption: "", is360: true, file: compressedFile, preview: URL.createObjectURL(compressedFile) };
     }));
     setTrip(p => ({ ...p, gallery: [...p.gallery, ...newPhotos] }));
   };
@@ -342,7 +398,12 @@ export default function CreateStory() {
         const item = trip.gallery[i];
         let itemUrl = item.url;
         if (item.file) itemUrl = await uploadImage(`stories/${activeId}/gallery/${Date.now()}-${i}.jpg`, item.file);
-        finalGallery.push({ url: itemUrl, caption: item.caption || "" });
+        
+        finalGallery.push({ 
+            url: itemUrl, 
+            caption: item.caption || "", 
+            is360: item.is360 || false 
+        });
       }
 
       await updateDoc(doc(db, "stories", activeId), {
@@ -397,7 +458,6 @@ export default function CreateStory() {
   };
 
   return (
-    // ⚡ FIX: Updated background colors for light/dark mode support
     <div className="min-h-screen bg-slate-50 dark:bg-[#0B0F19] transition-colors duration-300">
       
       {/* ⚡ FLOATING NAV CONTROLS */}
@@ -425,7 +485,6 @@ export default function CreateStory() {
         className="max-w-5xl mx-auto pt-24 px-4 pb-20"
       >
         <div className="flex justify-between items-end mb-8">
-          {/* ⚡ FIX: Updated Text Gradient for visibility in Light Mode */}
           <h1 className="text-3xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">
             {editId ? "Edit Journey" : "New Journey"}
           </h1>
@@ -434,7 +493,6 @@ export default function CreateStory() {
           </button>
         </div>
 
-        {/* ⚡ FIX: Updated Card Background for Light Mode */}
         <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 backdrop-blur-xl rounded-3xl p-6 md:p-8 shadow-xl dark:shadow-2xl space-y-8">
           
           {/* --- ESSENTIALS --- */}
@@ -621,9 +679,9 @@ export default function CreateStory() {
                            </div>
                            <InputGroup label="Highlight" value={day.highlight} onChange={e => updateDay(index, "highlight", e.target.value)} placeholder="Moment of the day..." />
                            <textarea 
-                             className="w-full bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-xl p-3 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/20 focus:outline-none focus:border-orange-500 transition-colors resize-none"
-                             rows={3}
-                             placeholder="Tell the story of this day..."
+                             className="w-full bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-xl p-3 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/20 focus:outline-none focus:border-orange-500 transition-colors resize-y min-h-[150px]"
+                             rows={6}
+                             placeholder="Tell the story of this day... (Drag bottom-right corner to expand)"
                              value={day.story}
                              onChange={e => updateDay(index, "story", e.target.value)}
                            />
@@ -720,30 +778,63 @@ export default function CreateStory() {
             </h2>
             
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              
+              {/* ⚡ STANDARD PHOTO BUTTON */}
               <label className="aspect-[4/5] rounded-xl border-2 border-dashed border-slate-300 dark:border-white/10 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 hover:border-purple-500 dark:hover:border-purple-500/50 cursor-pointer flex flex-col items-center justify-center text-slate-400 dark:text-white/40 hover:text-purple-600 dark:hover:text-purple-400 transition-all">
                 <Plus size={24} className="mb-2"/>
-                <span className="text-xs font-medium text-center px-2">Add Extra Photos</span>
+                <span className="text-xs font-medium text-center px-2">Add Photo</span>
                 <input type="file" multiple accept="image/*" hidden onChange={(e) => handleGalleryUpload(e.target.files)} />
               </label>
 
-              {trip.gallery.map((img, i) => (
-                <div key={i} className="flex flex-col gap-2">
-                    <div className="relative aspect-square rounded-xl overflow-hidden group border border-slate-200 dark:border-white/10">
-                    <img src={img.preview} alt="Gallery" className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <button onClick={() => removeGalleryImage(i)} className="bg-red-500/80 p-2 rounded-full text-white hover:bg-red-600 transition-colors">
-                        <Trash2 size={16} />
-                        </button>
-                    </div>
-                    </div>
-                    <input 
-                        className="w-full bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/20 focus:outline-none focus:border-purple-500 transition-colors text-center"
-                        placeholder="Caption..."
-                        value={img.caption}
-                        onChange={(e) => updateGalleryCaption(i, e.target.value)}
-                    />
-                </div>
-              ))}
+              {/* ⚡ 360 PHOTO BUTTON (Restricted) */}
+              {trip.gallery.some(img => img.is360) ? (
+                 // DISABLED STATE (If 360 exists)
+                 <div className="aspect-[4/5] rounded-xl border-2 border-dashed border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-white/5 flex flex-col items-center justify-center text-slate-300 dark:text-white/20 cursor-not-allowed opacity-60">
+                    <Globe2 size={24} className="mb-2"/>
+                    <span className="text-[10px] font-medium text-center px-2">360° Limit Reached</span>
+                 </div>
+              ) : (
+                 // ACTIVE STATE
+                 <label className="aspect-[4/5] rounded-xl border-2 border-dashed border-slate-300 dark:border-white/10 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 hover:border-blue-500 dark:hover:border-blue-500/50 cursor-pointer flex flex-col items-center justify-center text-slate-400 dark:text-white/40 hover:text-blue-600 dark:hover:text-blue-400 transition-all">
+                    <Globe2 size={24} className="mb-2"/>
+                    <span className="text-xs font-medium text-center px-2">Add 360° Photo</span>
+                    <input type="file" accept="image/*" hidden onChange={(e) => handle360Upload(e.target.files)} />
+                 </label>
+              )}
+
+              {/* Images Grid */}
+                {trip.gallery.map((img, i) => (
+                  <div key={i} className="flex flex-col gap-2 relative group">
+                      <div className={`relative aspect-square rounded-xl overflow-hidden border ${img.is360 ? "border-blue-500 shadow-md shadow-blue-500/20" : "border-slate-200 dark:border-white/10"}`}>
+                        <img src={img.preview} alt="Gallery" className="w-full h-full object-cover" />
+                        
+                        {/* DELETE BUTTON */}
+                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => removeGalleryImage(i)} className="bg-red-500 p-1.5 rounded-full text-white hover:bg-red-600 shadow-sm">
+                              <Trash2 size={14} />
+                            </button>
+                        </div>
+
+                        {/* 360 BADGE (Only shows if it IS a 360 photo) */}
+                        {img.is360 && (
+                          <div className="absolute bottom-2 left-2 right-2">
+                            <div className="bg-blue-600/90 backdrop-blur-md text-white text-[10px] font-bold py-1.5 rounded-lg flex items-center justify-center gap-1.5 shadow-sm">
+                                <Globe2 size={12} className="animate-pulse"/>
+                                <span>360° Panorama</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Caption Input */}
+                      <input 
+                          className="w-full bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/20 focus:outline-none focus:border-purple-500 transition-colors text-center"
+                          placeholder={img.is360 ? "Describe this view..." : "Caption..."}
+                          value={img.caption}
+                          onChange={(e) => updateGalleryCaption(i, e.target.value)}
+                      />
+                  </div>
+                ))}
             </div>
             
             <div className="text-xs text-slate-500 flex items-center gap-2">
@@ -899,6 +990,7 @@ const CustomSelect = ({ label, value, onChange, options, placeholder }) => {
                                         key={option.id || option.label}
                                         type="button"
                                         onClick={() => { 
+                                            // Prefer Value if available (Categories), else Label (TripTypes)
                                             onChange(option.value || option.label); 
                                             setIsOpen(false); 
                                         }}

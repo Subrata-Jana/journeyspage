@@ -16,6 +16,9 @@ import toast from "react-hot-toast";
 import { db } from "../services/firebase";
 import { useMetaOptions } from "../hooks/useMetaOptions"; 
 
+import ThreeSixtyViewer from "../components/ThreeSixtyViewer"; // Adjust path
+import { Globe2 } from "lucide-react"; // Icon for 360
+
 // --- HELPER: Get Color Hex from Name ---
 const getColorHex = (name) => {
   const colors = {
@@ -153,9 +156,15 @@ export default function StoryDetail() {
         if (storyData.gallery && Array.isArray(storyData.gallery)) {
             storyData.gallery.forEach(item => {
                 if (typeof item === 'string') {
-                    allImages.push({ url: item, caption: "" });
+                    // Legacy support for old string-only images
+                    allImages.push({ url: item, caption: "", is360: false });
                 } else {
-                    allImages.push({ url: item.url, caption: item.caption || "" });
+                    // ⚡ FIX: You must explicitly read 'is360' here
+                    allImages.push({ 
+                        url: item.url, 
+                        caption: item.caption || "",
+                        is360: item.is360 || false  // <--- ADD THIS LINE
+                    });
                 }
             });
         }
@@ -673,6 +682,14 @@ export default function StoryDetail() {
                             className="break-inside-avoid rounded-xl md:rounded-2xl overflow-hidden cursor-zoom-in relative group shadow-lg"
                         >
                             <img src={img.url} alt="Gallery" className="w-full h-auto transform transition-transform duration-700 group-hover:scale-110"/>
+                            
+                            {/* 360 INDICATOR OVERLAY */}
+                            {img.is360 && (
+                                <div className="absolute top-2 left-2 bg-blue-600/90 text-white text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm shadow-md z-10">
+                                    <Globe2 size={12} /> 360° View
+                                </div>
+                            )}
+
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300"/>
                         </motion.div>
                     ))}
@@ -749,33 +766,39 @@ export default function StoryDetail() {
       </div>
 
       {/* --- LIGHTBOX MODAL --- */}
-      {lightboxIndex !== -1 && (
+        {lightboxIndex !== -1 && (
         <div className="fixed inset-0 z-[100] bg-black/98 backdrop-blur-xl flex items-center justify-center animate-in fade-in duration-300" onClick={closeLightbox}>
-            <button onClick={closeLightbox} className="absolute top-4 right-4 md:top-6 md:right-6 text-white/50 hover:text-white p-2 md:p-4 transition-colors z-50">
-                <X size={24} md:size={32} />
-            </button>
-
-            <button onClick={prevImage} className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white p-2 md:p-6 transition-all hidden md:block z-50">
-                <ChevronLeft size={64} />
-            </button>
-            <button onClick={nextImage} className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white p-2 md:p-6 transition-all hidden md:block z-50">
-                <ChevronRight size={64} />
-            </button>
+            {/* ... (Keep your Close, Prev, Next buttons) ... */}
 
             <div className="relative max-w-[95vw] max-h-[80vh] md:max-h-[95vh] w-full h-full flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                <img 
-                    src={fullGallery[lightboxIndex].url} 
-                    alt="Full View" 
-                    className="max-w-full max-h-full object-contain shadow-2xl"
-                />
+                
+                {/* CHECK IF 360 */}
+                {fullGallery[lightboxIndex].is360 ? (
+                    <div className="w-full h-[70vh] md:h-[80vh] bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+                        <ThreeSixtyViewer imageUrl={fullGallery[lightboxIndex].url} 
+                        onClose={closeLightbox}/>
+                        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white px-3 py-1 rounded-full text-xs pointer-events-none z-[60]">
+                            Drag to look around
+                        </div>
+                    </div>
+                ) : (
+                    // Standard Image
+                    <img 
+                        src={fullGallery[lightboxIndex].url} 
+                        alt="Full View" 
+                        className="max-w-full max-h-full object-contain shadow-2xl"
+                    />
+                )}
+
+                {/* Caption */}
                 {fullGallery[lightboxIndex].caption && (
-                    <div className="absolute bottom-4 md:bottom-10 bg-black/50 backdrop-blur-md px-4 py-2 md:px-6 md:py-3 rounded-full text-white text-xs md:text-sm font-medium border border-white/10 text-center max-w-[90%]">
+                    <div className="absolute bottom-4 md:bottom-10 bg-black/50 backdrop-blur-md px-4 py-2 md:px-6 md:py-3 rounded-full text-white text-xs md:text-sm font-medium border border-white/10 text-center max-w-[90%] pointer-events-none">
                         {fullGallery[lightboxIndex].caption}
                     </div>
                 )}
             </div>
         </div>
-      )}
+        )}
     </div>
   );
 }
