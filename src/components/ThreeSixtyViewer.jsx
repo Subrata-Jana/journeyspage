@@ -1,10 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Loader2, AlertCircle, Maximize, Minimize, X } from "lucide-react";
 
-// Accept 'onClose' prop to trigger parent modal closing
 export default function ThreeSixtyViewer({ imageUrl, onClose }) {
   const viewerRef = useRef(null);
-  const containerRef = useRef(null); // Ref for the wrapper div
+  const containerRef = useRef(null);
   
   const [status, setStatus] = useState("loading"); 
   const [errorMsg, setErrorMsg] = useState(null);
@@ -15,7 +14,6 @@ export default function ThreeSixtyViewer({ imageUrl, onClose }) {
   // ⚡ TOGGLE FULL SCREEN
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
-
     if (!document.fullscreenElement) {
       containerRef.current.requestFullscreen().catch((err) => {
         console.error("Error attempting to enable fullscreen:", err);
@@ -25,17 +23,14 @@ export default function ThreeSixtyViewer({ imageUrl, onClose }) {
     }
   };
 
-  // ⚡ HANDLE CLOSE (Smart Exit)
+  // ⚡ HANDLE CLOSE
   const handleClose = () => {
-    // If in fullscreen, exit it first
     if (document.fullscreenElement) {
         document.exitFullscreen();
     }
-    // Then trigger parent close function
     if (onClose) onClose();
   };
 
-  // Listen for fullscreen changes to update the icon state
   useEffect(() => {
     const handleFsChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -45,7 +40,7 @@ export default function ThreeSixtyViewer({ imageUrl, onClose }) {
   }, []);
 
   // -------------------------------------------
-  // EXISTING LOADING LOGIC (SAME AS BEFORE)
+  // ⚡ INIT VIEWER LOGIC
   // -------------------------------------------
   useEffect(() => {
     if (!imageUrl) return;
@@ -54,6 +49,8 @@ export default function ThreeSixtyViewer({ imageUrl, onClose }) {
 
     const initViewer = () => {
       if (!viewerRef.current || !window.pannellum) return;
+      
+      // Cleanup old instance
       if (viewerInstance.current) {
          try { viewerInstance.current.destroy(); } catch(e) {}
       }
@@ -63,32 +60,56 @@ export default function ThreeSixtyViewer({ imageUrl, onClose }) {
 
       img.onload = () => {
         if (!viewerRef.current) return;
-        const width = img.width;
-        const height = img.height;
-        const verticalCoverage = (height / width) * 360; 
+
+        // 1. CALCULATE IMAGE GEOMETRY (The "Black Hole" Fix)
+        const imgWidth = img.width;
+        const imgHeight = img.height;
+        // How much vertical world does this image cover?
+        const verticalCoverage = (imgHeight / imgWidth) * 360; 
         const safeVaov = Math.min(179, Math.max(10, verticalCoverage)); 
+
+        // 2. DETECT MOBILE / PORTRAIT MODE (The "Mobile View" Fix)
+        const containerWidth = viewerRef.current.clientWidth;
+        const containerHeight = viewerRef.current.clientHeight;
+        const isPortrait = containerHeight > containerWidth;
+
+        // ⚡ MOBILE OPTIMIZATION:
+        // - Portrait (Mobile): Zoom IN (60 degrees) to fill height
+        // - Landscape (Desktop): Zoom OUT (110 degrees) to see width
+        const initialFov = isPortrait ? 60 : 110; 
+        // Restrict max zoom out on mobile so they don't see the black bars again
+        const maxFov = isPortrait ? 90 : 120; 
 
         try {
           viewerRef.current.innerHTML = ""; 
           viewerInstance.current = window.pannellum.viewer(viewerRef.current, {
             type: "equirectangular",
             panorama: imageUrl,
+            
+            // Geometry
             haov: 360,
             vaov: safeVaov,
             vOffset: 0,
+            
+            // ⚡ DYNAMIC CAMERA SETTINGS
+            hfov: initialFov,         // Start Zoom level based on screen shape
+            minHfov: 40,              // Max Zoom In
+            maxHfov: maxFov,          // Max Zoom Out (Restricted on mobile)
+            
+            // Auto Rotation
             autoLoad: true,
             autoRotate: -2,
             autoRotateInactivityDelay: 3000,
+            
+            // UI
             showZoomCtrl: false,
-            showFullscreenCtrl: false, // We use our own custom button
+            showFullscreenCtrl: false,
             compass: false,
             mouseZoom: false,
             keyboardZoom: false,
-            hfov: 100,
-            minHfov: 50,
-            maxHfov: 110,
             yaw: 0,
             pitch: 0,
+            backgroundColor: [0, 0, 0], // Ensure background is black
           });
           setStatus("ready");
         } catch (err) {
@@ -104,6 +125,7 @@ export default function ThreeSixtyViewer({ imageUrl, onClose }) {
       };
     };
 
+    // Library Loader
     const loadLibrary = () => {
       if (window.pannellum) {
         initViewer();
@@ -162,16 +184,13 @@ export default function ThreeSixtyViewer({ imageUrl, onClose }) {
   }
 
   return (
-    // Attach Ref to the Wrapper Div so we can fullscreen the whole thing
-    <div ref={containerRef} className="w-full h-full relative bg-[#0B0F19] rounded-2xl overflow-hidden shadow-2xl border border-white/10 group">
+    <div ref={containerRef} className="w-full h-full relative bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10 group">
       
       {/* Viewer Container */}
       <div ref={viewerRef} className="w-full h-full" style={{ outline: 'none' }} />
 
-      {/* ⚡ CUSTOM CONTROLS OVERLAY (Visible in Fullscreen) */}
+      {/* ⚡ CUSTOM CONTROLS OVERLAY */}
       <div className="absolute top-4 right-4 z-[9999] flex items-center gap-3">
-        
-        {/* Fullscreen Button */}
         {status === "ready" && (
             <button 
                 onClick={toggleFullscreen}
@@ -181,8 +200,6 @@ export default function ThreeSixtyViewer({ imageUrl, onClose }) {
                 {isFullscreen ? <Minimize size={20}/> : <Maximize size={20}/>}
             </button>
         )}
-
-        {/* Close Button */}
         <button 
             onClick={handleClose}
             className="p-2.5 rounded-full bg-red-500/80 backdrop-blur-md text-white border border-white/10 hover:bg-red-600 hover:scale-105 transition-all shadow-lg"
@@ -192,9 +209,8 @@ export default function ThreeSixtyViewer({ imageUrl, onClose }) {
         </button>
       </div>
 
-      {/* Loading Spinner */}
       {status === "loading" && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#0B0F19] z-20">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
           <Loader2 className="animate-spin text-white/50" size={32} />
         </div>
       )}

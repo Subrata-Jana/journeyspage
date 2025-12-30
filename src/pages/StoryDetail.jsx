@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom"; 
 import { 
   collection, doc, getDoc, getDocs, orderBy, query, addDoc, serverTimestamp, onSnapshot 
@@ -7,17 +7,17 @@ import { getAuth } from "firebase/auth";
 import { motion, useScroll, useSpring } from "framer-motion"; 
 import { 
   MapPin, Calendar, Flag, Mountain, Info, Lightbulb, User, 
-  Utensils, BedDouble, Navigation, ArrowRight, X, ChevronLeft, ChevronRight, 
+  Utensils, BedDouble, Navigation, ChevronRight, 
   QrCode, ShieldCheck, Share2, Heart, MessageSquare, Send, 
-  ArrowLeft, Sun, Moon, Footprints, Check 
+  ArrowLeft, Sun, Moon, Footprints, Check, Globe2 
 } from "lucide-react";
 import * as LucideIcons from "lucide-react"; 
 import toast from "react-hot-toast"; 
 import { db } from "../services/firebase";
 import { useMetaOptions } from "../hooks/useMetaOptions"; 
 
-import ThreeSixtyViewer from "../components/ThreeSixtyViewer"; // Adjust path
-import { Globe2 } from "lucide-react"; // Icon for 360
+// ⚡ NEW IMPORTS
+import GallerySlider from "../components/GallerySlider"; 
 
 // --- HELPER: Get Color Hex from Name ---
 const getColorHex = (name) => {
@@ -38,10 +38,10 @@ export default function StoryDetail() {
   const auth = getAuth();
   const currentUser = auth.currentUser;
   
-  // ⚡ 1. FETCH ALL META DATA LISTS ⚡
+  // ⚡ META DATA LISTS
   const { options: categories } = useMetaOptions("categories");
-  const { options: tripTypes } = useMetaOptions("tripTypes");       // <-- ADDED
-  const { options: difficulties } = useMetaOptions("difficultyLevels"); // <-- ADDED
+  const { options: tripTypes } = useMetaOptions("tripTypes");       
+  const { options: difficulties } = useMetaOptions("difficultyLevels");
 
   const [story, setStory] = useState(null);
   const [authorProfile, setAuthorProfile] = useState(null);
@@ -55,16 +55,14 @@ export default function StoryDetail() {
 
   // 🖼️ GALLERY & LIGHTBOX STATE
   const [fullGallery, setFullGallery] = useState([]);
-  const [lightboxIndex, setLightboxIndex] = useState(-1);
+  const [lightboxIndex, setLightboxIndex] = useState(-1); // -1 means closed
   const [showQr, setShowQr] = useState(false);
 
   // 📊 REAL-TIME SOCIAL STATE
   const [isTracking, setIsTracking] = useState(false);
   const [trackersCount, setTrackersCount] = useState(0); 
-  
   const [hasLiked, setHasLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
-  
   const [hasShared, setHasShared] = useState(false);
   const [shareCount, setShareCount] = useState(0);
 
@@ -144,26 +142,28 @@ export default function StoryDetail() {
         setStory({ id: storySnap.id, ...storyData });
         setDays(daysData);
 
+        // --- BUILD UNIFIED GALLERY ---
         const allImages = [];
+        // 1. Cover Image
         if (storyData.coverImage) {
-            allImages.push({ url: storyData.coverImage, caption: storyData.coverImageCaption || "Cover Photo" });
+            allImages.push({ url: storyData.coverImage, caption: storyData.coverImageCaption || "Cover Photo", is360: false });
         }
+        // 2. Day Images
         daysData.forEach(d => { 
             if (d.imageUrl) {
-                allImages.push({ url: d.imageUrl, caption: d.imageCaption || `Day ${d.dayNumber}: ${d.title}` });
+                allImages.push({ url: d.imageUrl, caption: d.imageCaption || `Day ${d.dayNumber}: ${d.title}`, is360: false });
             }
         });
+        // 3. Main Gallery
         if (storyData.gallery && Array.isArray(storyData.gallery)) {
             storyData.gallery.forEach(item => {
                 if (typeof item === 'string') {
-                    // Legacy support for old string-only images
                     allImages.push({ url: item, caption: "", is360: false });
                 } else {
-                    // ⚡ FIX: You must explicitly read 'is360' here
                     allImages.push({ 
                         url: item.url, 
                         caption: item.caption || "",
-                        is360: item.is360 || false  // <--- ADD THIS LINE
+                        is360: item.is360 || false 
                     });
                 }
             });
@@ -247,32 +247,6 @@ export default function StoryDetail() {
       }
   };
 
-  // --- LIGHTBOX ---
-  const openLightbox = (url) => {
-    const idx = fullGallery.findIndex(img => img.url === url);
-    if (idx !== -1) setLightboxIndex(idx);
-  };
-  const closeLightbox = () => setLightboxIndex(-1);
-  const nextImage = useCallback((e) => {
-    e?.stopPropagation();
-    setLightboxIndex((prev) => (prev + 1) % fullGallery.length);
-  }, [fullGallery.length]);
-  const prevImage = useCallback((e) => {
-    e?.stopPropagation();
-    setLightboxIndex((prev) => (prev - 1 + fullGallery.length) % fullGallery.length);
-  }, [fullGallery.length]);
-
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (lightboxIndex === -1) return;
-      if (e.key === "Escape") closeLightbox();
-      if (e.key === "ArrowRight") nextImage();
-      if (e.key === "ArrowLeft") prevImage();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [lightboxIndex, nextImage, prevImage]);
-
   const getYoutubeId = (url) => {
     if (!url) return null;
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
@@ -280,8 +254,7 @@ export default function StoryDetail() {
     return (match && match[2].length === 11) ? match[2] : null;
   };
 
-  // ⚡ 2. DYNAMIC LOOKUP HELPERS ⚡
-  // Match stored ID ("8") to Label ("Mountains")
+  // ⚡ DYNAMIC LOOKUP HELPERS
   const categoryData = story?.category 
     ? categories.find(c => c.value === story.category || c.label === story.category) 
     : null;
@@ -412,7 +385,6 @@ export default function StoryDetail() {
       </div>
 
       {/* --- MAIN CONTENT GRID --- */}
-      {/* ... (Rest of your component remains unchanged) ... */}
       <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-10 mt-0 lg:-mt-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
             
@@ -579,7 +551,12 @@ export default function StoryDetail() {
 
                         {/* Image */}
                         {day.imageUrl && (
-                            <div className="w-full aspect-[16/9] rounded-2xl md:rounded-3xl overflow-hidden mb-6 md:mb-8 shadow-2xl relative cursor-zoom-in group/img" onClick={() => openLightbox(day.imageUrl)}>
+                            <div className="w-full aspect-[16/9] rounded-2xl md:rounded-3xl overflow-hidden mb-6 md:mb-8 shadow-2xl relative cursor-zoom-in group/img" 
+                                 onClick={() => {
+                                     // Find index in fullGallery
+                                     const idx = fullGallery.findIndex(img => img.url === day.imageUrl);
+                                     if(idx !== -1) setLightboxIndex(idx);
+                                 }}>
                                 <img src={day.imageUrl} alt="Day" className="w-full h-full object-cover transition-transform duration-700 group-hover/img:scale-105"/>
                                 {day.imageCaption && (
                                     <div className="absolute bottom-3 left-4 md:bottom-4 md:left-6 bg-black/60 backdrop-blur-md px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white text-[10px] md:text-xs font-medium border border-white/10">
@@ -666,7 +643,7 @@ export default function StoryDetail() {
             </div>
         )}
 
-        {/* --- GALLERY --- */}
+        {/* --- GALLERY GRID --- */}
         {fullGallery.length > 0 && (
             <div className="mt-24 md:mt-32 max-w-[1400px] mx-auto px-0 md:px-6">
                 <div className="flex items-center justify-between mb-8 md:mb-10 px-4 md:px-0">
@@ -678,7 +655,7 @@ export default function StoryDetail() {
                         <motion.div 
                             whileHover={{ y: -5 }}
                             key={idx} 
-                            onClick={() => openLightbox(img.url)}
+                            onClick={() => setLightboxIndex(idx)}
                             className="break-inside-avoid rounded-xl md:rounded-2xl overflow-hidden cursor-zoom-in relative group shadow-lg"
                         >
                             <img src={img.url} alt="Gallery" className="w-full h-auto transform transition-transform duration-700 group-hover:scale-110"/>
@@ -765,45 +742,15 @@ export default function StoryDetail() {
 
       </div>
 
-      {/* --- LIGHTBOX MODAL --- */}
-        {lightboxIndex !== -1 && (
-        <div className="fixed inset-0 z-[100] bg-black/98 backdrop-blur-xl flex items-center justify-center animate-in fade-in duration-300" onClick={closeLightbox}>
-            {/* ... (Keep your Close, Prev, Next buttons) ... */}
+      {/* ⚡ PREMIUM GALLERY SLIDER (Replaces Manual Modal) */}
+      {lightboxIndex !== -1 && (
+        <GallerySlider 
+            images={fullGallery} 
+            initialIndex={lightboxIndex} 
+            onClose={() => setLightboxIndex(-1)} 
+        />
+      )}
 
-            <div className="relative max-w-[95vw] max-h-[80vh] md:max-h-[95vh] w-full h-full flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                
-                {/* CHECK IF 360 */}
-                {fullGallery[lightboxIndex].is360 ? (
-                    <div className="w-full h-[70vh] md:h-[80vh] bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10">
-                        <ThreeSixtyViewer imageUrl={fullGallery[lightboxIndex].url} 
-                        onClose={closeLightbox}/>
-                        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white px-3 py-1 rounded-full text-xs pointer-events-none z-[60]">
-                            Drag to look around
-                        </div>
-                    </div>
-                ) : (
-                    // Standard Image
-                    <img 
-                        src={fullGallery[lightboxIndex].url} 
-                        alt="Full View" 
-                        className="max-w-full max-h-full object-contain shadow-2xl"
-                    />
-                )}
-
-                {/* Caption */}
-                {fullGallery[lightboxIndex].caption && (
-                    <div className="absolute bottom-4 md:bottom-10 bg-black/50 backdrop-blur-md px-4 py-2 md:px-6 md:py-3 rounded-full text-white text-xs md:text-sm font-medium border border-white/10 text-center max-w-[90%] pointer-events-none">
-                        {fullGallery[lightboxIndex].caption}
-                    </div>
-                )}
-            </div>
-        </div>
-        )}
     </div>
   );
 }
-
-// --- SUB COMPONENTS ---
-const Badge = ({ icon, text, color }) => (
-  text ? <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border backdrop-blur-md shadow-sm ${color}`}>{icon} {text}</span> : null
-);

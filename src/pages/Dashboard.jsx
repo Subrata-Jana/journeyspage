@@ -7,59 +7,64 @@ import {
   Users, Zap // ⚡ Icons for Travel Hub Tabs
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import toast, { Toaster } from 'react-hot-toast';
+import toast, { Toaster } from "react-hot-toast";
 
 import { useAuth } from "../contexts/AuthContext";
 import { db, storage } from "../services/firebase";
 import {
-  collection, query, where, getDocs, getDoc, orderBy, limit, deleteDoc, doc, onSnapshot
+  collection,
+  query,
+  where,
+  getDocs,
+  getDoc,
+  orderBy,
+  limit,
+  deleteDoc,
+  doc,
+  onSnapshot
 } from "firebase/firestore";
 import { ref, deleteObject } from "firebase/storage";
 
 // IMPORT THE FEED COMPONENT
-import Feed from "../components/Feed"; 
+import Feed from "../components/Feed";
 
 export default function Dashboard() {
   const { user, userProfile, logout, loading } = useAuth();
   const navigate = useNavigate();
 
   // --- VIEW STATE ---
-  const [currentView, setCurrentView] = useState("overview"); 
+  const [currentView, setCurrentView] = useState("overview");
   const [stories, setStories] = useState([]);
   const [loadingStories, setLoadingStories] = useState(true);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-  
+
   // --- TRAVEL HUB STATE ---
   const [hubTab, setHubTab] = useState("tracking"); // 'tracking' | 'explore'
 
   // --- SEARCH & FILTER ---
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all"); 
+  const [filterStatus, setFilterStatus] = useState("all");
 
   // --- THEME STATE ---
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
 
   useEffect(() => {
     const root = window.document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-    }
+    if (theme === "dark") root.classList.add("dark");
+    else root.classList.remove("dark");
     localStorage.setItem("theme", theme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === "light" ? "dark" : "light"));
-  };
+  const toggleTheme = () =>
+    setTheme(prev => (prev === "light" ? "dark" : "light"));
 
   // --- ⚡ FETCH SITE LOGO ---
   const [siteLogo, setSiteLogo] = useState(null);
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "meta", "site_config"), (doc) => {
-      if (doc.exists() && doc.data().logoUrl) {
-        setSiteLogo(doc.data().logoUrl);
+    const unsub = onSnapshot(doc(db, "meta", "site_config"), snap => {
+      if (snap.exists() && snap.data().logoUrl) {
+        setSiteLogo(snap.data().logoUrl);
       } else {
         setSiteLogo(null);
       }
@@ -74,74 +79,100 @@ export default function Dashboard() {
     }
   }, [userProfile, loading, navigate]);
 
-  // --- LOAD STORIES ---
+  // --- LOAD STORIES (FIXED, CRASH-PROOF) ---
   useEffect(() => {
     if (!user?.uid) return;
+
     const loadStories = async () => {
+      setLoadingStories(true);
+
+      // Feed view does not need author stories
+      if (currentView === "feed") {
+        setStories([]);
+        setLoadingStories(false);
+        return;
+      }
+
       try {
-        if (currentView === 'feed') return; 
-        const limitCount = currentView === 'stories' ? 50 : 5;
+        const limitCount = currentView === "stories" ? 50 : 5;
+
         const q = query(
           collection(db, "stories"),
           where("authorId", "==", user.uid),
           orderBy("createdAt", "desc"),
           limit(limitCount)
         );
+
         const snap = await getDocs(q);
         setStories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch (e) {
-        console.error(e);
+      } catch (err) {
+        console.error("Failed to load stories:", err);
+        setStories([]);
+        toast.error("Unable to load your stories");
       } finally {
         setLoadingStories(false);
       }
     };
+
     loadStories();
-  }, [user, currentView]);
+  }, [user?.uid, currentView]);
 
   // --- LOGOUT ---
   const handleLogout = async () => {
     try {
-        await logout();
-        navigate("/login"); 
+      await logout();
+      navigate("/login");
     } catch (error) {
-        console.error("Logout failed", error);
-        toast.error("Failed to log out");
+      console.error("Logout failed", error);
+      toast.error("Failed to log out");
     }
   };
 
   // --- DELETE STORY ---
   const handleDeleteDraft = async (id, status, published) => {
-    // 🛡️ SECURITY CHECK: Prevent deletion if Pending or Approved
-    if (published && status !== 'returned') {
-        return toast.error("Cannot delete a story while it is under review or approved.");
+    if (published && status !== "returned") {
+      return toast.error(
+        "Cannot delete a story while it is under review or approved."
+      );
     }
 
-    if (!window.confirm(`Delete this story permanently?`)) return;
+    if (!window.confirm("Delete this story permanently?")) return;
+
     const toastId = toast.loading("Deleting...");
+
     try {
       const storyRef = doc(db, "stories", id);
       const storySnap = await getDoc(storyRef);
+
       if (storySnap.exists()) {
         const data = storySnap.data();
         const imageRefs = [];
-        if (data.coverImage) try { imageRefs.push(ref(storage, data.coverImage)); } catch(e){}
-        if (data.gallery && Array.isArray(data.gallery)) {
+
+        if (data.coverImage) imageRefs.push(ref(storage, data.coverImage));
+
+        if (Array.isArray(data.gallery)) {
           data.gallery.forEach(item => {
-            const url = typeof item === 'string' ? item : item.url;
-            if (url) try { imageRefs.push(ref(storage, url)); } catch(e){}
+            const url = typeof item === "string" ? item : item.url;
+            if (url) imageRefs.push(ref(storage, url));
           });
         }
-        const daysRef = collection(db, "stories", id, "days");
-        const daysSnap = await getDocs(daysRef);
+
+        const daysSnap = await getDocs(
+          collection(db, "stories", id, "days")
+        );
+
         const deleteDaysPromises = [];
         daysSnap.forEach(dayDoc => {
-           const dayData = dayDoc.data();
-           if (dayData.imageUrl) try { imageRefs.push(ref(storage, dayData.imageUrl)); } catch(e){}
-           deleteDaysPromises.push(deleteDoc(dayDoc.ref));
+          if (dayDoc.data().imageUrl) {
+            imageRefs.push(ref(storage, dayDoc.data().imageUrl));
+          }
+          deleteDaysPromises.push(deleteDoc(dayDoc.ref));
         });
-        await Promise.allSettled(imageRefs.map(imgRef => deleteObject(imgRef)));
+
+        await Promise.allSettled(imageRefs.map(deleteObject));
         await Promise.all(deleteDaysPromises);
       }
+
       await deleteDoc(storyRef);
       setStories(prev => prev.filter(s => s.id !== id));
       toast.success("Deleted", { id: toastId });
@@ -152,19 +183,30 @@ export default function Dashboard() {
   };
 
   const filteredStories = stories.filter(story => {
-    const matchesSearch = (story.title || "").toLowerCase().includes(searchQuery.toLowerCase());
-    
-    // Updated Filter Logic
+    const matchesSearch = (story.title || "")
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase());
+
     let matchesFilter = true;
-    if (filterStatus === "published") matchesFilter = story.status === 'approved';
+    if (filterStatus === "published") matchesFilter = story.status === "approved";
     if (filterStatus === "draft") matchesFilter = !story.published;
-    if (filterStatus === "review") matchesFilter = story.published && story.status !== 'approved' && story.status !== 'returned';
-    if (filterStatus === "action") matchesFilter = story.status === 'returned';
+    if (filterStatus === "review")
+      matchesFilter =
+        story.published &&
+        story.status !== "approved" &&
+        story.status !== "returned";
+    if (filterStatus === "action") matchesFilter = story.status === "returned";
 
     return matchesSearch && matchesFilter;
   });
 
-  if (loading || !userProfile) return <div className="min-h-screen bg-[#0B0F19] flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div></div>;
+  if (loading || !userProfile) {
+    return (
+      <div className="min-h-screen bg-[#0B0F19] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-[#0B0F19] text-slate-900 dark:text-white overflow-hidden font-sans transition-colors duration-300">
