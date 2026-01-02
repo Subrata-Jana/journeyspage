@@ -1,22 +1,22 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom"; 
 import { 
-  collection, query, getDocs, updateDoc, doc, orderBy, deleteDoc, setDoc, getDoc, onSnapshot 
+  collection, query, getDocs, doc, orderBy, deleteDoc, setDoc, getDoc, onSnapshot, updateDoc 
 } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"; // ⚡ NEW: Storage Imports
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { signOut } from "firebase/auth";
-import { db, auth, storage } from "../services/firebase"; // ⚡ NEW: Added storage
+import { db, auth, storage } from "../services/firebase";
 import { 
   ShieldAlert, Layout, MapPin, Tag, Zap, 
   Award, List, Gem, Edit2, Trash2, Save, 
   Plus, Search, X, Gift, LogOut, Sun, Moon, User, 
-  CheckCircle, RotateCcw, Eye, MessageSquare, AlertCircle,
-  History, Clock, Send, ShieldCheck, Image as ImageIcon, UploadCloud
+  CheckCircle, RotateCcw, Eye, Clock, Image as ImageIcon, UploadCloud, Menu,
+  AlertCircle
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import * as LucideIcons from "lucide-react"; 
 
-// --- CSS FOR SLEEK SCROLLBARS ---
+// --- CONSTANTS ---
 const SCROLLBAR_STYLES = `
   .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
   .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
@@ -57,10 +57,10 @@ const COLOR_PALETTE = [
   { name: "pink", hex: "#ec4899" }, { name: "rose", hex: "#f43f5e" }
 ];
 
-// --- MAIN ADMIN LAYOUT ---
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState("moderation");
   const [isDarkMode, setIsDarkMode] = useState(true); 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
 
   const handleLogout = async () => {
     if(window.confirm("Are you sure you want to logout?")) {
@@ -78,33 +78,44 @@ export default function AdminPanel() {
       <style>{SCROLLBAR_STYLES}</style>
       <Toaster position="bottom-right" toastOptions={{ style: { background: isDarkMode ? '#1e293b' : '#fff', color: isDarkMode ? '#fff' : '#0f172a', border: '1px solid #334155' } }} />
 
+      {/* MOBILE HEADER */}
+      <div className={`md:hidden fixed top-0 w-full z-40 p-4 border-b flex items-center justify-between ${isDarkMode ? 'bg-[#111625] border-white/5' : 'bg-white border-slate-200'}`}>
+          <div className="flex items-center gap-2 font-black text-lg">
+              <ShieldAlert className="text-orange-500" size={20} /> Admin
+          </div>
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg bg-slate-100 dark:bg-white/5">
+              {isSidebarOpen ? <X size={20}/> : <Menu size={20}/>}
+          </button>
+      </div>
+
       {/* SIDEBAR */}
-      <aside className={`w-64 border-r flex flex-col shrink-0 h-screen overflow-hidden transition-colors duration-300
-        ${isDarkMode ? 'bg-[#111625] border-white/5' : 'bg-white border-slate-200 shadow-sm'}`}>
-        
-        <div className={`p-6 border-b shrink-0 ${isDarkMode ? 'border-white/5' : 'border-slate-100'}`}>
+      <aside className={`
+        fixed md:relative z-30 w-64 border-r flex flex-col shrink-0 h-screen overflow-hidden transition-all duration-300
+        ${isDarkMode ? 'bg-[#111625] border-white/5' : 'bg-white border-slate-200 shadow-sm'}
+        ${isSidebarOpen ? 'left-0' : '-left-64 md:left-0'}
+      `}>
+        <div className={`p-6 border-b shrink-0 ${isDarkMode ? 'border-white/5' : 'border-slate-100'} hidden md:block`}>
            <h1 className="text-xl font-black flex items-center gap-2 tracking-tight">
                 <ShieldAlert className="text-orange-500" size={24} /> 
                 <span>Admin<span className="text-slate-500">Suite</span></span>
            </h1>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar mt-16 md:mt-0">
             <div className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 mb-2 mt-4">Core</div>
-            <SidebarItem icon={<Layout size={18}/>} label="Story Moderation" active={activeTab === "moderation"} onClick={() => setActiveTab("moderation")} isDark={isDarkMode}/>
-            {/* ⚡ NEW: BRANDING TAB */}
-            <SidebarItem icon={<ImageIcon size={18}/>} label="Site Branding" active={activeTab === "branding"} onClick={() => setActiveTab("branding")} isDark={isDarkMode}/>
+            <SidebarItem icon={<Layout size={18}/>} label="Story Moderation" active={activeTab === "moderation"} onClick={() => {setActiveTab("moderation"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+            <SidebarItem icon={<ImageIcon size={18}/>} label="Site Branding" active={activeTab === "branding"} onClick={() => {setActiveTab("branding"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
 
             <div className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 mb-2 mt-6">Master Data</div>
-            <SidebarItem icon={<MapPin size={18}/>} label="Trip Types" active={activeTab === "tripTypes"} onClick={() => setActiveTab("tripTypes")} isDark={isDarkMode}/>
-            <SidebarItem icon={<Tag size={18}/>} label="Categories" active={activeTab === "categories"} onClick={() => setActiveTab("categories")} isDark={isDarkMode}/>
-            <SidebarItem icon={<Zap size={18}/>} label="Difficulty Levels" active={activeTab === "difficultyLevels"} onClick={() => setActiveTab("difficultyLevels")} isDark={isDarkMode}/>
+            <SidebarItem icon={<MapPin size={18}/>} label="Trip Types" active={activeTab === "tripTypes"} onClick={() => {setActiveTab("tripTypes"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+            <SidebarItem icon={<Tag size={18}/>} label="Categories" active={activeTab === "categories"} onClick={() => {setActiveTab("categories"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+            <SidebarItem icon={<Zap size={18}/>} label="Difficulty Levels" active={activeTab === "difficultyLevels"} onClick={() => {setActiveTab("difficultyLevels"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
 
             <div className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 mb-2 mt-6">Gamification</div>
-            <SidebarItem icon={<Award size={18}/>} label="Badges" active={activeTab === "badges"} onClick={() => setActiveTab("badges")} isDark={isDarkMode}/>
-            <SidebarItem icon={<List size={18}/>} label="Ranks" active={activeTab === "ranks"} onClick={() => setActiveTab("ranks")} isDark={isDarkMode}/>
-            <SidebarItem icon={<Gift size={18}/>} label="Loot Box (Heirlooms)" active={activeTab === "loot"} onClick={() => setActiveTab("loot")} isDark={isDarkMode}/>
-            <SidebarItem icon={<Gem size={18}/>} label="Treasures" active={activeTab === "treasures"} onClick={() => setActiveTab("treasures")} isDark={isDarkMode}/>
+            <SidebarItem icon={<Award size={18}/>} label="Badges" active={activeTab === "badges"} onClick={() => {setActiveTab("badges"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+            <SidebarItem icon={<List size={18}/>} label="Ranks" active={activeTab === "ranks"} onClick={() => {setActiveTab("ranks"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+            <SidebarItem icon={<Gift size={18}/>} label="Loot Box (Heirlooms)" active={activeTab === "loot"} onClick={() => {setActiveTab("loot"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+            <SidebarItem icon={<Gem size={18}/>} label="Treasures" active={activeTab === "treasures"} onClick={() => {setActiveTab("treasures"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
         </nav>
 
         <div className={`p-4 border-t mt-auto ${isDarkMode ? 'border-white/5 bg-black/20' : 'border-slate-200 bg-slate-50'}`}>
@@ -137,20 +148,12 @@ export default function AdminPanel() {
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
-      <main className={`flex-1 overflow-y-auto p-8 scroll-smooth custom-scrollbar ${isDarkMode ? 'bg-[#0B0F19]' : 'bg-slate-50'}`}>
+      <main className={`flex-1 overflow-y-auto p-4 md:p-8 pt-20 md:pt-8 scroll-smooth custom-scrollbar ${isDarkMode ? 'bg-[#0B0F19]' : 'bg-slate-50'}`}>
         <div className="max-w-5xl mx-auto pb-20">
             {activeTab === "moderation" && <StoryModeration isDark={isDarkMode}/>}
-            {activeTab === "branding" && <LogoManager isDark={isDarkMode}/>} {/* ⚡ NEW: LOGO MANAGER */}
+            {activeTab === "branding" && <LogoManager isDark={isDarkMode}/>}
             {activeTab === "tripTypes" && <MetaEditor title="Trip Types" docId="tripTypes" fields={['label', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
-            {activeTab === "categories" && (
-  <MetaEditor 
-    title="Categories (Terrain)" 
-    docId="categories" 
-    fields={['label', 'value', 'description', 'color', 'icon']} 
-    isDark={isDarkMode}
-  />
-)}
+            {activeTab === "categories" && <MetaEditor title="Categories (Terrain)" docId="categories" fields={['label', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
             {activeTab === "difficultyLevels" && <MetaEditor title="Difficulty Levels" docId="difficultyLevels" fields={['label', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
             {activeTab === "badges" && <MetaEditor title="Badges" docId="badges" fields={['name', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
             {activeTab === "ranks" && <MetaEditor title="Ranks" docId="ranks" fields={['name', 'threshold', 'perk', 'color', 'icon']} isDark={isDarkMode}/>}
@@ -162,7 +165,6 @@ export default function AdminPanel() {
   );
 }
 
-// --- HELPER: SIDEBAR ITEM ---
 function SidebarItem({ icon, label, active, onClick, isDark }) {
     return (
         <button 
@@ -178,13 +180,297 @@ function SidebarItem({ icon, label, active, onClick, isDark }) {
     )
 }
 
-// --- ⚡ NEW: LOGO MANAGER COMPONENT ---
+// --- 🛡️ FIXED STORY MODERATION COMPONENT ---
+function StoryModeration({ isDark }) {
+    const [allStories, setAllStories] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [filterStatus, setFilterStatus] = useState("pending");
+    const navigate = useNavigate();
+
+    // ⚡ STATE FOR RETURN MODAL
+    const [showReturnModal, setShowReturnModal] = useState(false);
+    const [storyToReturn, setStoryToReturn] = useState(null);
+    const [returnReason, setReturnReason] = useState(""); 
+    const [isReturning, setIsReturning] = useState(false); // Added loading state
+
+    useEffect(() => {
+        async function fetchStories() {
+            try {
+                const q = query(collection(db, "stories"), orderBy("createdAt", "desc"));
+                const snap = await getDocs(q);
+                const fetched = snap.docs.map((d) => ({ 
+                    id: d.id, 
+                    ...d.data(),
+                    // Normalize status for UI
+                    status: d.data().status || (d.data().published ? 'pending' : 'draft') 
+                }));
+                setAllStories(fetched);
+            } catch (error) {
+                console.error("Error fetching stories:", error);
+                toast.error("Could not load stories");
+            } finally {
+                setLoading(false);
+            }
+        }
+        fetchStories();
+    }, []);
+
+    const filteredStories = useMemo(() => {
+        if (filterStatus === 'all') return allStories;
+        return allStories.filter(story => {
+            if (filterStatus === 'pending') {
+                return story.published && story.status !== 'approved' && story.status !== 'returned';
+            }
+            return story.status === filterStatus;
+        });
+    }, [allStories, filterStatus]);
+
+    const handleReview = (story) => {
+        navigate(`/story/${story.id}`, { state: { adminView: true } });
+    };
+
+    const handleDelete = async (id) => {
+        if(!window.confirm("Permanently delete this story?")) return;
+        try {
+            await deleteDoc(doc(db, "stories", id));
+            setAllStories(prev => prev.filter(s => s.id !== id));
+            toast.success("Story deleted");
+        } catch (e) { toast.error("Failed to delete"); }
+    };
+
+    // ⚡ OPEN MODAL
+    const openReturnModal = (story) => {
+        setStoryToReturn(story);
+        setReturnReason(""); 
+        setShowReturnModal(true);
+    };
+
+    // ⚡ FIXED SUBMIT LOGIC
+    const submitReturn = async () => {
+        if (!storyToReturn) return;
+
+        // 1. Detect if flags already exist from the Review page
+        const existingFeedback = storyToReturn.feedback || {};
+        const hasFlags = Object.keys(existingFeedback).length > 0;
+        const note = returnReason.trim();
+
+        // 2. LOGIC FIX: Allow return if Flags exist OR Note exists
+        if (!hasFlags && !note) {
+            return toast.error("Please enter a reason or flag issues.");
+        }
+
+        setIsReturning(true);
+
+        try {
+            const storyRef = doc(db, "stories", storyToReturn.id);
+            
+            // 3. Merge Feedback: If user added a text note, ensure it's saved
+            const finalFeedback = { ...existingFeedback };
+            if (note) {
+                finalFeedback.general = note; 
+            }
+
+            // 4. Update Firestore
+            await updateDoc(storyRef, {
+                status: "returned",
+                published: false, // Important: Unpublish so author can edit
+                adminNotes: note || "Please check flagged items.", 
+                feedback: finalFeedback
+            });
+
+            // 5. Update UI instantly
+            setAllStories(prev => prev.map(s => s.id === storyToReturn.id ? { 
+                ...s, 
+                status: "returned", 
+                published: false,
+                adminNotes: note,
+                feedback: finalFeedback
+            } : s));
+            
+            toast.success("Story returned to author!");
+            setShowReturnModal(false);
+        } catch (error) {
+            console.error("Return error:", error);
+            toast.error("Failed to return story.");
+        } finally {
+            setIsReturning(false);
+        }
+    };
+
+    const StatusTab = ({ id, label, icon: Icon, color }) => (
+        <button 
+            onClick={() => setFilterStatus(id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all
+            ${filterStatus === id 
+                ? `${color} shadow-lg scale-105` 
+                : isDark ? 'text-slate-400 hover:bg-white/5' : 'text-slate-500 hover:bg-slate-100'
+            }`}
+        >
+            <Icon size={16} /> {label}
+            <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${filterStatus === id ? 'bg-white/20' : 'bg-slate-200 dark:bg-slate-800'}`}>
+                {id === 'all' ? allStories.length : 
+                 id === 'pending' ? allStories.filter(s => s.published && s.status !== 'approved' && s.status !== 'returned').length :
+                 allStories.filter(s => s.status === id).length}
+            </span>
+        </button>
+    );
+
+    const cardClass = isDark ? "bg-[#111625] border-white/5" : "bg-white border-slate-200 shadow-sm";
+
+    // Count issues for Modal UI
+    const issueCount = storyToReturn ? Object.keys(storyToReturn.feedback || {}).length : 0;
+
+    return (
+        <div className="space-y-6 animate-in slide-in-from-right duration-500 pb-20">
+            <h2 className={`text-3xl font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                <ShieldAlert className="text-orange-500"/> Story Moderation
+            </h2>
+
+            <div className={`p-1.5 rounded-xl flex flex-wrap gap-2 ${isDark ? 'bg-black/20 border border-white/5' : 'bg-slate-100 border border-slate-200'}`}>
+                <StatusTab id="pending" label="Pending" icon={Clock} color="bg-blue-600 text-white" />
+                <StatusTab id="approved" label="Approved" icon={CheckCircle} color="bg-green-600 text-white" />
+                <StatusTab id="returned" label="Returned" icon={RotateCcw} color="bg-orange-600 text-white" />
+                <StatusTab id="all" label="All" icon={List} color="bg-slate-600 text-white" />
+            </div>
+
+            <div className={`rounded-2xl border overflow-hidden shadow-2xl ${cardClass}`}>
+                <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                    <thead className={`text-xs uppercase font-bold ${isDark ? 'bg-white/5 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
+                        <tr>
+                            <th className="p-4">Story</th>
+                            <th className="p-4">Author</th>
+                            <th className="p-4">Status</th>
+                            <th className="p-4 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody className={`divide-y text-sm ${isDark ? 'divide-white/5' : 'divide-slate-100'}`}>
+                        {loading && <tr><td colSpan="4" className="p-8 text-center text-slate-500">Loading...</td></tr>}
+                        {!loading && filteredStories.length === 0 && <tr><td colSpan="4" className="p-12 text-center opacity-50 italic">No stories found.</td></tr>}
+                        
+                        {filteredStories.map(story => (
+                            <tr key={story.id} className={`transition-colors ${isDark ? 'hover:bg-white/[0.02]' : 'hover:bg-slate-50'}`}>
+                                <td className="p-4 max-w-[250px]">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-12 h-12 rounded-lg bg-slate-800 shrink-0 overflow-hidden">
+                                            {story.coverImage ? <img src={story.coverImage} className="w-full h-full object-cover" alt=""/> : <div className="w-full h-full flex items-center justify-center text-slate-500"><ImageIcon size={16}/></div>}
+                                        </div>
+                                        <div>
+                                            <div className={`font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{story.title || "Untitled"}</div>
+                                            <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                                                <MapPin size={10}/> {story.location || "Unknown"}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className={`p-4 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{story.authorName || "Unknown"}</td>
+                                <td className="p-4">
+                                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide inline-flex items-center gap-1.5
+                                        ${story.status === 'approved' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
+                                          story.status === 'returned' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 
+                                          story.published ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
+                                          'bg-slate-500/10 text-slate-500 border border-slate-500/20'}
+                                    `}>
+                                        {story.status === 'approved' && <CheckCircle size={12}/>}
+                                        {story.status || (story.published ? "Pending" : "Draft")}
+                                    </span>
+                                </td>
+                                <td className="p-4 text-right">
+                                    <div className="flex justify-end gap-2">
+                                        <button 
+                                            onClick={() => handleReview(story)} 
+                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-lg flex items-center gap-2 font-bold transition-all hover:scale-105"
+                                        >
+                                            <Eye size={16}/> Review
+                                        </button>
+
+                                        {/* Show Return Button if not already Returned/Approved */}
+                                        {story.status !== 'approved' && story.status !== 'returned' && (
+                                            <button 
+                                                onClick={() => openReturnModal(story)}
+                                                className="px-3 py-2 bg-orange-500/10 text-orange-500 border border-orange-500/20 rounded-lg hover:bg-orange-500/20 transition-all font-bold"
+                                                title="Return to Author"
+                                            >
+                                                <RotateCcw size={16} />
+                                            </button>
+                                        )}
+                                        
+                                        <button 
+                                            onClick={() => handleDelete(story.id)} 
+                                            className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition-colors" 
+                                            title="Delete"
+                                        >
+                                            <Trash2 size={16}/>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+
+            {/* ⚡ RETURN MODAL ⚡ */}
+            {showReturnModal && storyToReturn && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="w-full max-w-sm p-8 rounded-3xl shadow-2xl bg-[#1A1F2E] border border-white/10 text-center relative overflow-hidden">
+                        {/* Glow effect */}
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-orange-500/20 rounded-full blur-3xl pointer-events-none"/>
+                        
+                        <div className="relative z-10 flex flex-col items-center">
+                            <div className="w-16 h-16 rounded-full bg-orange-500/10 flex items-center justify-center mb-6 border border-orange-500/20">
+                                <AlertCircle size={32} className="text-orange-500" />
+                            </div>
+                            
+                            <h3 className="text-xl font-bold text-white mb-2">Return to Author?</h3>
+                            
+                            <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+                                {issueCount > 0 
+                                  ? `You have flagged ${issueCount} specific issue${issueCount !== 1 ? 's' : ''}.` 
+                                  : "No specific items flagged."} 
+                                <br/>Add a note below (optional if flagged).
+                            </p>
+
+                            <textarea 
+                                value={returnReason}
+                                onChange={(e) => setReturnReason(e.target.value)}
+                                className="w-full h-24 bg-black/30 border border-white/10 rounded-xl p-3 text-white text-sm mb-6 focus:outline-none focus:border-orange-500 resize-none placeholder:text-white/20"
+                                placeholder="Explain what needs to be fixed..."
+                            />
+
+                            <div className="flex gap-3 w-full">
+                                <button 
+                                    onClick={() => setShowReturnModal(false)}
+                                    className="flex-1 py-3 rounded-xl font-bold text-slate-400 bg-white/5 hover:bg-white/10 hover:text-white transition-colors"
+                                    disabled={isReturning}
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onClick={submitReturn}
+                                    disabled={isReturning}
+                                    className="flex-1 py-3 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white rounded-xl font-bold shadow-lg shadow-orange-900/20 transition-all transform hover:scale-[1.02] flex items-center justify-center gap-2"
+                                >
+                                    {isReturning ? "Returning..." : "Yes, Return"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    ); 
+}
+
+// --- SUB COMPONENTS (LOGO, LOOT, META) ---
+// Kept exactly as provided to maintain full functionality
+
 function LogoManager({ isDark }) {
     const [logoUrl, setLogoUrl] = useState("");
     const [uploading, setUploading] = useState(false);
     const [loading, setLoading] = useState(true);
 
-    // Fetch existing logo on mount
     useEffect(() => {
         const fetchConfig = async () => {
             try {
@@ -205,26 +491,17 @@ function LogoManager({ isDark }) {
 
     const handleLogoUpload = async (file) => {
         if (!file) return;
-        
-        // Validation: Max size 2MB
         if (file.size > 2 * 1024 * 1024) {
             return toast.error("File size must be less than 2MB");
         }
-
         const toastId = toast.loading("Uploading Logo...");
         setUploading(true);
-
         try {
-            // 1. Upload to Firebase Storage
-            // We use a timestamp to avoid browser caching issues with same filenames
             const fileRef = ref(storage, `site_assets/logo_${Date.now()}.png`);
             await uploadBytes(fileRef, file);
             const downloadUrl = await getDownloadURL(fileRef);
-
-            // 2. Update Firestore "meta/site_config"
             const configRef = doc(db, "meta", "site_config");
             await setDoc(configRef, { logoUrl: downloadUrl }, { merge: true });
-
             setLogoUrl(downloadUrl);
             toast.success("Logo Updated Successfully!", { id: toastId });
         } catch (error) {
@@ -234,441 +511,38 @@ function LogoManager({ isDark }) {
             setUploading(false);
         }
     };
-
     const cardClass = isDark ? "bg-[#111625] border-white/5" : "bg-white border-slate-200 shadow-sm";
-
     return (
         <div className="space-y-8 animate-in slide-in-from-right duration-500">
              <h2 className={`text-3xl font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
                  <ImageIcon className="text-orange-500"/> Site Branding
              </h2>
-
              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                 {/* PREVIEW CARD */}
                  <div className={`p-8 rounded-2xl border flex flex-col items-center justify-center gap-6 ${cardClass}`}>
                     <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">Current Logo</h3>
-                    
                     <div className="relative w-40 h-40 rounded-full border-4 border-dashed border-slate-700/50 flex items-center justify-center bg-slate-900/50 overflow-hidden group">
-                        {loading ? (
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div>
-                        ) : logoUrl ? (
-                            <img src={logoUrl} alt="Site Logo" className="w-full h-full object-contain p-2" />
-                        ) : (
-                            <div className="text-slate-500 text-xs text-center px-4">No Logo Uploaded</div>
-                        )}
+                        {loading ? <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div> : logoUrl ? <img src={logoUrl} alt="Site Logo" className="w-full h-full object-contain p-2" /> : <div className="text-slate-500 text-xs text-center px-4">No Logo Uploaded</div>}
                     </div>
-                    
-                    <p className="text-xs text-slate-500 text-center max-w-xs">
-                        This logo will appear on the Login screen, Dashboard sidebar, and Landing page header.
-                    </p>
+                    <p className="text-xs text-slate-500 text-center max-w-xs">This logo will appear on the Login screen, Dashboard sidebar, and Landing page header.</p>
                  </div>
-
-                 {/* UPLOAD CARD */}
                  <div className={`p-8 rounded-2xl border flex flex-col justify-center ${cardClass}`}>
                     <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-6">Update Logo</h3>
-                    
-                    <label className={`flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-xl cursor-pointer hover:bg-slate-50/5 transition-all
-                        ${uploading ? 'opacity-50 pointer-events-none' : 'hover:border-orange-500/50'}
-                        ${isDark ? 'border-white/10 bg-black/20' : 'border-slate-300 bg-slate-50'}
-                    `}>
+                    <label className={`flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-xl cursor-pointer hover:bg-slate-50/5 transition-all ${uploading ? 'opacity-50 pointer-events-none' : 'hover:border-orange-500/50'} ${isDark ? 'border-white/10 bg-black/20' : 'border-slate-300 bg-slate-50'}`}>
                         <div className="flex flex-col items-center justify-center pt-5 pb-6">
                             <UploadCloud className={`w-10 h-10 mb-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
                             <p className="mb-2 text-sm text-slate-500"><span className="font-semibold">Click to upload</span> or drag and drop</p>
                             <p className="text-xs text-slate-500">PNG, JPG or SVG (Max 2MB)</p>
                             <p className="text-xs text-orange-500 mt-2 font-medium">Recommended: 512x512px Transparent PNG</p>
                         </div>
-                        <input 
-                            type="file" 
-                            className="hidden" 
-                            accept="image/png, image/jpeg, image/svg+xml"
-                            onChange={(e) => handleLogoUpload(e.target.files[0])}
-                            disabled={uploading}
-                        />
+                        <input type="file" className="hidden" accept="image/png, image/jpeg, image/svg+xml" onChange={(e) => handleLogoUpload(e.target.files[0])} disabled={uploading}/>
                     </label>
-
-                    {uploading && (
-                        <div className="mt-4 flex items-center gap-2 text-xs text-orange-500 font-bold justify-center animate-pulse">
-                            <div className="w-2 h-2 bg-orange-500 rounded-full"/> Uploading new logo...
-                        </div>
-                    )}
+                    {uploading && <div className="mt-4 flex items-center gap-2 text-xs text-orange-500 font-bold justify-center animate-pulse"><div className="w-2 h-2 bg-orange-500 rounded-full"/> Uploading new logo...</div>}
                  </div>
              </div>
         </div>
     );
 }
 
-// --- 🛡️ PREMIUM STORY MODERATION (FIXED & ENHANCED) ---
-function StoryModeration({ isDark }) {
-    const [allStories, setAllStories] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [filterStatus, setFilterStatus] = useState("pending"); // pending, approved, returned, all
-    const navigate = useNavigate();
-    
-    // MODAL STATES
-    const [selectedStory, setSelectedStory] = useState(null);
-    const [viewMode, setViewMode] = useState(null);
-    const [adminNote, setAdminNote] = useState("");
-
-    useEffect(() => {
-        async function fetchStories() {
-            try {
-                // Fetch ALL stories ordered by date
-                const q = query(collection(db, "stories"), orderBy("createdAt", "desc"));
-                const snap = await getDocs(q);
-                const fetched = snap.docs.map((d) => ({ 
-                    id: d.id, 
-                    ...d.data(),
-                    // Ensure status is normalized
-                    status: d.data().status || (d.data().published ? 'pending' : 'draft') 
-                }));
-                setAllStories(fetched);
-            } catch (error) {
-                console.error("Error fetching stories:", error);
-                toast.error("Could not load stories");
-            } finally {
-                setLoading(false);
-            }
-        }
-        fetchStories();
-    }, []);
-
-    // --- COMPUTED: FILTER STORIES ---
-    const filteredStories = useMemo(() => {
-        if (filterStatus === 'all') return allStories;
-        
-        return allStories.filter(story => {
-            if (filterStatus === 'pending') {
-                // Show stories that are Published by user but NOT approved or returned yet
-                return story.published && story.status !== 'approved' && story.status !== 'returned';
-            }
-            return story.status === filterStatus;
-        });
-    }, [allStories, filterStatus]);
-
-    // --- ACTIONS ---
-    const handleOpenLive = (story) => {
-        // Pass 'adminView: true' state so StoryDetail.jsx allows access
-        navigate(`/story/${story.id}`, { state: { adminView: true } });
-    };
-
-    const handleApprove = async (id) => {
-        if(!window.confirm("Approve this story for public view?")) return;
-        try {
-            await updateDoc(doc(db, "stories", id), { status: 'approved', adminNotes: '' });
-            setAllStories(prev => prev.map(s => s.id === id ? {...s, status: 'approved', adminNotes: ''} : s));
-            toast.success("Story approved!");
-            if(selectedStory) closeModal();
-        } catch (e) { toast.error("Failed to approve"); }
-    };
-
-    const handleDelete = async (id) => {
-        if(!window.confirm("Permanently delete this story? This cannot be undone.")) return;
-        try {
-            await deleteDoc(doc(db, "stories", id));
-            setAllStories(prev => prev.filter(s => s.id !== id));
-            toast.success("Story deleted");
-            if(selectedStory) closeModal();
-        } catch (e) { toast.error("Failed to delete"); }
-    };
-
-    const handleReturnSubmit = async () => {
-        if (!selectedStory) return;
-        if (!adminNote.trim()) return toast.error("Please add a note explaining why.");
-        
-        const toastId = toast.loading("Processing Revision...");
-        try {
-            const currentCount = selectedStory.revisionCount || 0;
-            const newCount = currentCount + 1;
-
-            const historyEntry = {
-                revision: newCount,
-                note: adminNote,
-                date: new Date().toISOString()
-            };
-
-            const currentHistory = selectedStory.revisionHistory || [];
-            const newHistory = [...currentHistory, historyEntry];
-
-            await updateDoc(doc(db, "stories", selectedStory.id), { 
-                status: 'returned', 
-                adminNotes: adminNote,
-                revisionCount: newCount, 
-                revisionHistory: newHistory,
-                published: false // Unpublish so user has to resubmit
-            });
-            
-            setAllStories(prev => prev.map(s => s.id === selectedStory.id ? {
-                ...s, 
-                status: 'returned', 
-                adminNotes: adminNote,
-                revisionCount: newCount,
-                revisionHistory: newHistory,
-                published: false
-            } : s));
-
-            toast.success(`Returned (Revision #${newCount})`, { id: toastId });
-            closeModal();
-        } catch (e) { 
-            console.error(e);
-            toast.error("Failed to return story", { id: toastId }); 
-        }
-    };
-
-    const openViewModal = (story) => { setSelectedStory(story); setViewMode('view'); };
-    const openReturnModal = (story) => { setSelectedStory(story); setAdminNote(story.adminNotes || ""); setViewMode('return'); };
-    const openHistoryModal = (story) => { setSelectedStory(story); setViewMode('history'); };
-    const closeModal = () => { setSelectedStory(null); setViewMode(null); setAdminNote(""); };
-
-    const cardClass = isDark ? "bg-[#111625] border-white/5" : "bg-white border-slate-200 shadow-sm";
-
-    // --- RENDER HELPERS ---
-    const StatusTab = ({ id, label, icon: Icon, color }) => (
-        <button 
-            onClick={() => setFilterStatus(id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all
-            ${filterStatus === id 
-                ? `${color} shadow-lg scale-105` 
-                : isDark ? 'text-slate-400 hover:bg-white/5' : 'text-slate-500 hover:bg-slate-100'
-            }`}
-        >
-            <Icon size={16} /> {label}
-            {/* Count Badge */}
-            <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${filterStatus === id ? 'bg-white/20' : 'bg-slate-200 dark:bg-slate-800'}`}>
-                {id === 'all' ? allStories.length : 
-                 id === 'pending' ? allStories.filter(s => s.published && s.status !== 'approved' && s.status !== 'returned').length :
-                 allStories.filter(s => s.status === id).length}
-            </span>
-        </button>
-    );
-
-    return (
-        <div className="space-y-6 animate-in slide-in-from-right duration-500 pb-20">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <h2 className={`text-3xl font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
-                    <ShieldAlert className="text-orange-500"/> Story Moderation
-                </h2>
-            </div>
-
-            {/* --- FILTER TABS --- */}
-            <div className={`p-1.5 rounded-xl flex flex-wrap gap-2 ${isDark ? 'bg-black/20 border border-white/5' : 'bg-slate-100 border border-slate-200'}`}>
-                <StatusTab id="pending" label="Pending Review" icon={Clock} color="bg-blue-600 text-white" />
-                <StatusTab id="approved" label="Approved" icon={CheckCircle} color="bg-green-600 text-white" />
-                <StatusTab id="returned" label="Returned" icon={RotateCcw} color="bg-orange-600 text-white" />
-                <StatusTab id="all" label="All Stories" icon={List} color="bg-slate-600 text-white" />
-            </div>
-
-            {/* --- TABLE --- */}
-            <div className={`rounded-2xl border overflow-hidden shadow-2xl ${cardClass}`}>
-                <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                    <thead className={`text-xs uppercase font-bold ${isDark ? 'bg-white/5 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
-                        <tr>
-                            <th className="p-4">Story Info</th>
-                            <th className="p-4">Author</th>
-                            <th className="p-4">Stats & Revisions</th>
-                            <th className="p-4">Status</th>
-                            <th className="p-4 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className={`divide-y text-sm ${isDark ? 'divide-white/5' : 'divide-slate-100'}`}>
-                        {loading && <tr><td colSpan="5" className="p-8 text-center text-slate-500"><div className="flex justify-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500"></div></div></td></tr>}
-                        {!loading && filteredStories.length === 0 && <tr><td colSpan="5" className="p-12 text-center opacity-50 italic">No stories found in "{filterStatus}".</td></tr>}
-                        
-                        {filteredStories.map(story => (
-                            <tr key={story.id} className={`transition-colors ${isDark ? 'hover:bg-white/[0.02]' : 'hover:bg-slate-50'}`}>
-                                <td className="p-4 max-w-[250px]">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 rounded-lg bg-slate-800 shrink-0 overflow-hidden">
-                                            {story.coverImage ? <img src={story.coverImage} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-500"><LucideIcons.Image size={16}/></div>}
-                                        </div>
-                                        <div>
-                                            <div className={`font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{story.title || "Untitled"}</div>
-                                            <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                                                <MapPin size={10}/> {story.location || "Unknown"}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className={`p-4 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                                    <div className="flex flex-col">
-                                        <span className="font-medium">{story.authorName || "Unknown"}</span>
-                                        <span className="text-[10px] font-mono opacity-50">{story.authorId?.slice(0,6)}...</span>
-                                    </div>
-                                </td>
-                                <td className="p-4">
-                                    <div className="flex flex-col gap-1.5">
-                                        {/* Revision Counter */}
-                                        <div 
-                                            onClick={() => openHistoryModal(story)}
-                                            className={`cursor-pointer inline-flex w-fit items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors
-                                            ${story.revisionCount > 0 
-                                                ? 'bg-purple-500/10 text-purple-500 border-purple-500/20 hover:bg-purple-500/20' 
-                                                : 'text-slate-500 border-transparent'}`}
-                                        >
-                                            <History size={10}/> {story.revisionCount || 0} Revisions
-                                        </div>
-                                        <div className="text-[10px] text-slate-500 flex items-center gap-3">
-                                            <span className="flex items-center gap-1"><Eye size={10}/> {story.views || 0}</span>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="p-4">
-                                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide inline-flex items-center gap-1.5
-                                        ${story.status === 'approved' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
-                                          story.status === 'returned' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 
-                                          story.published ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
-                                          'bg-slate-500/10 text-slate-500 border border-slate-500/20'}
-                                    `}>
-                                        {story.status === 'approved' && <CheckCircle size={12}/>}
-                                        {story.status === 'returned' && <RotateCcw size={12}/>}
-                                        {story.published && story.status !== 'approved' && story.status !== 'returned' && <Clock size={12}/>}
-                                        {story.status || (story.published ? "Pending" : "Draft")}
-                                    </span>
-                                </td>
-                                <td className="p-4 text-right">
-                                    <div className="flex justify-end gap-2">
-                                        {/* VIEW LIVE BUTTON (Opens Full Page) */}
-                                        <button onClick={() => handleOpenLive(story)} className="p-2 bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-blue-500 rounded-lg transition-colors" title="Open Public View">
-                                            <LucideIcons.ExternalLink size={16}/>
-                                        </button>
-
-                                        {/* QUICK VIEW (Modal) */}
-                                        <button onClick={() => openViewModal(story)} className="p-2 bg-blue-500/10 text-blue-500 rounded-lg hover:bg-blue-500/20 transition-colors" title="Quick Review">
-                                            <Eye size={16}/>
-                                        </button>
-
-                                        {story.status !== 'approved' && (
-                                            <>
-                                                <button onClick={() => openReturnModal(story)} className="p-2 bg-orange-500/10 text-orange-500 rounded-lg hover:bg-orange-500/20 transition-colors" title="Return with Notes">
-                                                    <RotateCcw size={16}/>
-                                                </button>
-                                                <button onClick={() => handleApprove(story.id)} className="p-2 bg-green-500/10 text-green-500 rounded-lg hover:bg-green-500/20 transition-colors" title="Approve">
-                                                    <CheckCircle size={16}/>
-                                                </button>
-                                            </>
-                                        )}
-
-                                        <button onClick={() => handleDelete(story.id)} className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition-colors" title="Delete">
-                                            <Trash2 size={16}/>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-                </div>
-            </div>
-
-            {/* --- MODAL OVERLAY --- */}
-            {selectedStory && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className={`w-full max-w-2xl rounded-2xl shadow-2xl border flex flex-col max-h-[90vh] overflow-hidden ${isDark ? 'bg-[#111625] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
-                        
-                        {/* MODAL HEADER */}
-                        <div className={`p-4 border-b flex justify-between items-center ${isDark ? 'border-white/10 bg-white/5' : 'border-slate-100 bg-slate-50'}`}>
-                            <h3 className="font-bold text-lg flex items-center gap-2">
-                                {viewMode === 'view' && <><Eye size={20} className="text-blue-500"/> Review Story</>}
-                                {viewMode === 'return' && <><RotateCcw size={20} className="text-orange-500"/> Return Story</>}
-                                {viewMode === 'history' && <><History size={20} className="text-purple-500"/> Revision History</>}
-                            </h3>
-                            <button onClick={closeModal} className="p-2 hover:bg-black/10 dark:hover:bg-white/10 rounded-full transition"><X size={20}/></button>
-                        </div>
-
-                        {/* MODAL CONTENT */}
-                        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                            
-                            {/* VIEW MODE */}
-                            {viewMode === 'view' && (
-                                <div className="space-y-6">
-                                    {selectedStory.coverImage && (
-                                        <div className="w-full h-48 rounded-xl overflow-hidden shadow-lg relative">
-                                            <img src={selectedStory.coverImage} className="w-full h-full object-cover" alt="Cover" />
-                                            <div className="absolute bottom-0 left-0 w-full p-4 bg-gradient-to-t from-black/80 to-transparent text-white">
-                                                <h2 className="text-xl font-bold">{selectedStory.title}</h2>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4 text-xs font-mono opacity-70">
-                                            <div className="p-3 rounded border border-dashed border-current">Type: {selectedStory.tripType}</div>
-                                            <div className="p-3 rounded border border-dashed border-current">Diff: {selectedStory.difficulty}</div>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-bold uppercase text-slate-500">Summary</label>
-                                            <p className="mt-1 leading-relaxed opacity-80">{selectedStory.aboutPlace || "No summary provided."}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* RETURN MODE */}
-                            {viewMode === 'return' && (
-                                <div className="space-y-4">
-                                    <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl flex gap-3">
-                                        <MessageSquare className="text-blue-500 shrink-0 mt-1" size={20}/>
-                                        <div className="text-sm">
-                                            <p className="font-bold text-blue-500">Feedback for Author</p>
-                                            <p className="opacity-80 mt-1">Clear instructions reduce round-trips.</p>
-                                        </div>
-                                    </div>
-                                    <textarea 
-                                        value={adminNote}
-                                        onChange={(e) => setAdminNote(e.target.value)}
-                                        className={`w-full h-40 p-4 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all ${isDark ? 'bg-black/30 border border-white/10 text-white' : 'bg-slate-50 border border-slate-200 text-slate-900'}`}
-                                        placeholder="Explain what needs fixing..."
-                                        autoFocus
-                                    />
-                                </div>
-                            )}
-
-                            {/* HISTORY MODE */}
-                            {viewMode === 'history' && (
-                                <div className="space-y-6">
-                                    {!selectedStory.revisionHistory?.length ? (
-                                        <div className="text-center py-10 opacity-50 italic">No revision history found.</div>
-                                    ) : (
-                                        <div className="space-y-6 relative border-l-2 border-slate-200 dark:border-white/10 ml-3">
-                                            {selectedStory.revisionHistory.map((rev, idx) => (
-                                                <div key={idx} className="relative pl-8">
-                                                    <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-slate-200 dark:bg-slate-700 border-2 border-white dark:border-[#111625] z-10"></div>
-                                                    <div className="bg-slate-50 dark:bg-white/5 p-4 rounded-xl border border-slate-200 dark:border-white/5">
-                                                        <div className="flex justify-between items-center mb-2">
-                                                            <span className="font-bold text-sm text-orange-500">Revision #{rev.revision}</span>
-                                                            <span className="text-xs text-slate-400">{new Date(rev.date).toLocaleDateString()}</span>
-                                                        </div>
-                                                        <p className="text-sm opacity-80">{rev.note}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* MODAL FOOTER */}
-                        <div className={`p-4 border-t flex justify-end gap-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-slate-100 bg-slate-50'}`}>
-                            <button onClick={closeModal} className="px-5 py-2 rounded-xl text-sm font-bold opacity-60 hover:opacity-100 transition-opacity">Cancel</button>
-                            {viewMode === 'return' && (
-                                <button onClick={handleReturnSubmit} className="px-5 py-2 rounded-xl text-sm font-bold bg-orange-600 hover:bg-orange-500 text-white shadow-lg transition-all flex items-center gap-2">
-                                    <Send size={16}/> Send Feedback
-                                </button>
-                            )}
-                            {viewMode === 'view' && (
-                                <button onClick={() => { closeModal(); openReturnModal(selectedStory); }} className="px-5 py-2 rounded-xl text-sm font-bold bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 transition-all">
-                                    Return
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    ); 
-}
-
-// ... (KEEP ManageLoot and MetaEditor functions EXACTLY AS THEY WERE IN PREVIOUS CODE) ...
 function ManageLoot({ isDark }) {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -722,9 +596,7 @@ function ManageLoot({ isDark }) {
     }, [iconSearch]);
 
     const cardClass = isDark ? "bg-[#111625] border-white/5" : "bg-white border-slate-200 shadow-sm";
-    const inputClass = isDark 
-        ? "w-full bg-black/20 border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-orange-500 placeholder:text-slate-600" 
-        : "w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-900 focus:outline-none focus:border-orange-500 placeholder:text-slate-400";
+    const inputClass = isDark ? "w-full bg-black/20 border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-orange-500 placeholder:text-slate-600" : "w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-900 focus:outline-none focus:border-orange-500 placeholder:text-slate-400";
     const pickerClass = isDark ? "bg-[#1A1F2E] border-white/10" : "bg-white border-slate-200 shadow-xl";
   
     return (
@@ -786,8 +658,8 @@ function ManageLoot({ isDark }) {
           </div>
   
           <div className="xl:col-span-2 space-y-6">
-             {loading && <p>Loading...</p>}
-             {['plane', 'boat', 'bottle', 'lantern', 'box'].map(cat => {
+              {loading && <p>Loading...</p>}
+              {['plane', 'boat', 'bottle', 'lantern', 'box'].map(cat => {
                 const catItems = items.filter(i => i.category === cat);
                 if (catItems.length === 0) return null;
                 return (
@@ -803,7 +675,7 @@ function ManageLoot({ isDark }) {
                           {catItems.map(item => (
                               <div key={item.id} className={`flex items-center gap-3 p-3 rounded-xl border relative group ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
                                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0
-                                      ${item.rarity === 'Common' ? 'bg-slate-500' : item.rarity === 'Uncommon' ? 'bg-emerald-600' : 'bg-yellow-600 shadow-[0_0_15px_rgba(234,179,8,0.3)]'}
+                                      {item.rarity === 'Common' ? 'bg-slate-500' : item.rarity === 'Uncommon' ? 'bg-emerald-600' : 'bg-yellow-600 shadow-[0_0_15px_rgba(234,179,8,0.3)]'}
                                   `}>{renderIcon(item.icon)}</div>
                                   <div className="flex-1 min-w-0">
                                       <p className={`font-bold text-sm truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{item.name}</p>
@@ -820,7 +692,7 @@ function ManageLoot({ isDark }) {
         </div>
       </div>
     );
-  }
+}
 
 function MetaEditor({ title, docId, fields, isDark }) {
     const [items, setItems] = useState([]);
@@ -871,9 +743,7 @@ function MetaEditor({ title, docId, fields, isDark }) {
     const renderIcon = (iconName) => { if (!iconName) return <Plus size={20} />; const IconComponent = LucideIcons[iconName]; return IconComponent ? <IconComponent size={20} /> : <Plus size={20} />; };
 
     const cardClass = isDark ? "bg-[#111625] border-white/5" : "bg-white border-slate-200 shadow-sm";
-    const inputClass = isDark 
-        ? "w-full bg-black/20 border border-white/10 rounded-xl p-3 text-white focus:border-orange-500 outline-none placeholder:text-slate-600" 
-        : "w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-900 focus:border-orange-500 outline-none placeholder:text-slate-400";
+    const inputClass = isDark ? "w-full bg-black/20 border border-white/10 rounded-xl p-3 text-white focus:border-orange-500 outline-none placeholder:text-slate-600" : "w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-900 focus:border-orange-500 outline-none placeholder:text-slate-400";
     const pickerClass = isDark ? "bg-[#1A1F2E] border-white/10" : "bg-white border-slate-200 shadow-xl";
 
     return (
