@@ -175,11 +175,11 @@ export default function StoryDetail() {
     return () => unsubscribe();
   }, [storyId]);
 
-  // --- PLACEHOLDERS FOR SOCIAL ACTIONS (Connect these to your backend as needed) ---
-  const handleTrack = async () => { /* Implement tracking logic */ };
-  const handleLike = () => { /* Implement like logic */ };
+  // --- PLACEHOLDERS FOR SOCIAL ACTIONS ---
+  const handleTrack = async () => { /* Add tracking logic */ };
+  const handleLike = () => { /* Add like logic */ };
   const handleShare = () => { navigator.clipboard.writeText(window.location.href); toast.success("Link copied!"); };
-  const handlePostComment = async () => { /* Implement comment logic */ };
+  const handlePostComment = async () => { /* Add comment logic */ };
 
   // --- 🛡️ REVIEW HANDLERS ---
   const toggleFeedback = (fieldId, comment) => {
@@ -199,7 +199,7 @@ export default function StoryDetail() {
         await updateDoc(doc(db, "stories", storyId), {
             status: 'approved',
             published: true,
-            feedback: {}, // Clear feedback on approval
+            feedback: {}, 
             adminNotes: ""
         });
         toast.success("Story Published Successfully!");
@@ -217,7 +217,7 @@ export default function StoryDetail() {
         await updateDoc(doc(db, "stories", storyId), {
             status: 'returned',
             published: false,
-            feedback: feedback, // Save the specific flags
+            feedback: feedback, 
             adminNotes: "Please address the flagged issues."
         });
         toast.success("Story returned to author");
@@ -229,10 +229,7 @@ export default function StoryDetail() {
     }
   };
 
-  // ⚡ SMART REDIRECT: Sends author to Edit Page
-  const handleEditRedirect = () => {
-      navigate(`/create-story?edit=${storyId}`);
-  };
+  const handleEditRedirect = () => { navigate(`/create-story?edit=${storyId}`); };
 
   const getYoutubeId = (url) => {
     if(!url) return null;
@@ -259,133 +256,84 @@ export default function StoryDetail() {
       <Toaster position="bottom-center" />
       
       {/* ⚡ NEON READING BAR */}
-      <motion.div className="fixed top-0 left-0 right-0 h-1.5 z-[100] bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 origin-left shadow-[0_0_15px_rgba(236,72,153,0.7)]" style={{ scaleX }} />
+      <motion.div className="fixed top-0 left-0 right-0 h-1.5 z-[100] bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 origin-left" style={{ scaleX }} />
 
       {/* ⚡ FLOATING NAV CONTROLS */}
       <div className="fixed top-6 left-0 right-0 px-4 md:px-8 z-[90] flex justify-between items-center pointer-events-none">
-          <button onClick={() => navigate(-1)} className="pointer-events-auto p-3 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 text-white hover:bg-black/40 hover:scale-105 transition-all shadow-lg group">
-            <ArrowLeft size={24} className="group-hover:-translate-x-1 transition-transform"/>
-          </button>
+          <button onClick={() => navigate(-1)} className="pointer-events-auto p-3 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 text-white hover:scale-105 transition-all shadow-lg group"><ArrowLeft size={24}/></button>
           <div className="pointer-events-auto flex gap-3">
-            {/* 🛡️ ADMIN BANNER */}
-            {isAdminView && <div className="px-4 py-2 bg-orange-600 text-white rounded-full font-bold shadow-lg shadow-orange-900/50 flex items-center gap-2 animate-pulse"><ShieldAlert size={16}/> Admin View</div>}
-            
-            {/* ✍️ AUTHOR REVISION BANNER */}
-            {isAuthorView && <div className="px-4 py-2 bg-red-600 text-white rounded-full font-bold shadow-lg shadow-red-900/50 flex items-center gap-2 animate-pulse"><Edit3 size={16}/> Revision Mode</div>}
-            
-            <button onClick={() => setIsDark(!isDark)} className="p-3 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 text-white hover:bg-black/40 hover:rotate-12 transition-all shadow-lg">
-                {isDark ? <Sun size={24} className="text-yellow-400"/> : <Moon size={24} />}
-            </button>
+            {isAdminView && <div className="px-4 py-2 bg-orange-600 text-white rounded-full font-bold shadow-lg flex items-center gap-2"><ShieldAlert size={16}/> Admin View</div>}
+            {isAuthorView && <div className="px-4 py-2 bg-red-600 text-white rounded-full font-bold shadow-lg flex items-center gap-2"><Edit3 size={16}/> Revision Mode</div>}
+            <button onClick={() => setIsDark(!isDark)} className="p-3 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 text-white hover:rotate-12 transition-all shadow-lg">{isDark ? <Sun size={24}/> : <Moon size={24} />}</button>
           </div>
       </div>
 
-      {/* 🛑 REVISION ALERT FOR AUTHOR (STATIC) */}
       {isAuthorView && (
-          <div className="max-w-7xl mx-auto px-4 mt-24 mb-4">
-              <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
-                      <AlertTriangle size={24} className="text-red-500"/>
-                  </div>
-                  <div className="flex-1 text-center md:text-left">
-                      <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">Admin Requested Changes</h3>
-                      <p className="text-slate-600 dark:text-slate-300 text-sm">Please review the flagged sections below. Click "Edit & Fix Issues" to make corrections.</p>
-                  </div>
-                  <button 
-                      onClick={handleEditRedirect}
-                      className="px-6 py-2 bg-red-600 text-white font-bold rounded-xl shadow-lg hover:bg-red-500 transition-all flex items-center gap-2"
-                  >
-                      <Hammer size={16}/> Fix Now
-                  </button>
-              </div>
+          <div className="fixed top-20 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none">
+              <motion.div initial={{y:-50, opacity:0}} animate={{y:0, opacity:1}} className="pointer-events-auto bg-red-500/90 backdrop-blur-xl text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-white/10 max-w-lg">
+                  <AlertCircle size={24} className="shrink-0"/>
+                  <div className="text-sm"><p className="font-bold">Admin Requested Changes</p><p className="opacity-90">Please review flagged sections.</p></div>
+              </motion.div>
           </div>
       )}
 
       {/* --- 🎥 HERO SECTION --- */}
       <div className="relative h-[65vh] lg:h-[95vh] w-full bg-slate-900 overflow-hidden group">
         <ReviewSection id="coverImage" label="Cover Image" className="w-full h-full absolute inset-0" flagPosition="top-24 right-4">
-            {story.coverImage ? (
-            <motion.img initial={{ scale: 1.15 }} animate={{ scale: 1 }} transition={{ duration: 2, ease: "easeOut" }} src={story.coverImage} alt={story.title} className="w-full h-full object-cover" />
-            ) : <div className="w-full h-full flex items-center justify-center text-white/20">No Cover</div>}
+            {story.coverImage ? (<motion.img initial={{ scale: 1.15 }} animate={{ scale: 1 }} src={story.coverImage} className="w-full h-full object-cover" />) : <div className="w-full h-full flex items-center justify-center text-white/20">No Cover</div>}
         </ReviewSection>
-        
         <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-[#0B0F19]/20 to-transparent pointer-events-none" />
-        
         <div className="absolute bottom-0 inset-0 z-20 left-0 w-full p-4 md:p-12 lg:p-20 pb-16 lg:pb-40 max-w-7xl mx-auto flex flex-col items-center justify-end h-full text-center pointer-events-none">
-            <ReviewSection id="title" label="Title & Meta" className="pointer-events-auto space-y-4 md:space-y-6 animate-in fade-in slide-in-from-bottom-12 duration-1000">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white text-xs md:text-sm font-bold uppercase tracking-wider">
-                    <MapPin size={12} md:size={14} className="text-orange-400"/> {story.location}
-                </div>
+            <ReviewSection id="title" label="Title & Meta" className="pointer-events-auto space-y-4 md:space-y-6">
+                {/* ⚡ WRAPPED LOCATION IN REVIEW SECTION */}
+                <ReviewSection id="location" label="Location" className="inline-block relative" flagPosition="-right-3 -top-3">
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white text-xs md:text-sm font-bold uppercase tracking-wider">
+                        <MapPin size={12} md:size={14} className="text-orange-400"/> {story.location}
+                    </div>
+                </ReviewSection>
+
                 <h1 className="text-4xl md:text-7xl lg:text-8xl font-black text-white leading-[1.1] md:leading-[0.9] tracking-tight drop-shadow-2xl">{story.title}</h1>
-                <div className="flex flex-wrap items-center justify-center gap-4 md:gap-8 text-white/90 font-medium text-sm md:text-lg pt-2 md:pt-4">
-                    <div className="flex items-center gap-2.5"><Calendar size={16} md:size={20} className="text-orange-400"/> {story.month}</div>
-                    {categoryData && (<><div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/><div className="flex items-center gap-2 px-3 py-1 rounded-full border border-white/20 backdrop-blur-md" style={{ backgroundColor: `${categoryColor}20` }}>{CategoryIcon && <CategoryIcon size={16} style={{ color: categoryColor }} />}<span style={{ color: categoryColor }} className="font-bold text-sm">{categoryData.label}</span></div></>)}
-                    <div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/>
-                    <div className="flex items-center gap-2.5"><Flag size={16} md:size={20} className="text-emerald-400"/> {tripTypeData ? tripTypeData.label : story.tripType}</div>
-                    <div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/>
-                    <div className="flex items-center gap-2.5"><Mountain size={16} md:size={20} className="text-rose-400"/> {difficultyData ? difficultyData.label : story.difficulty}</div>
-                </div>
+                
+                {/* ⚡ WRAPPED META DETAILS IN REVIEW SECTION */}
+                <ReviewSection id="meta" label="Trip Details" className="inline-block relative" flagPosition="-right-4 -top-4">
+                    <div className="flex flex-wrap items-center justify-center gap-4 md:gap-8 text-white/90 font-medium text-sm md:text-lg pt-2 md:pt-4">
+                        <div className="flex items-center gap-2.5"><Calendar size={16} md:size={20} className="text-orange-400"/> {story.month}</div>
+                        {categoryData && (<><div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/><div className="flex items-center gap-2 px-3 py-1 rounded-full border border-white/20 backdrop-blur-md" style={{ backgroundColor: `${categoryColor}20` }}>{CategoryIcon && <CategoryIcon size={16} style={{ color: categoryColor }} />}<span style={{ color: categoryColor }} className="font-bold text-sm">{categoryData.label}</span></div></>)}
+                        <div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/>
+                        <div className="flex items-center gap-2.5"><Flag size={16} md:size={20} className="text-emerald-400"/> {tripTypeData ? tripTypeData.label : story.tripType}</div>
+                        <div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/>
+                        <div className="flex items-center gap-2.5"><Mountain size={16} md:size={20} className="text-rose-400"/> {difficultyData ? difficultyData.label : story.difficulty}</div>
+                    </div>
+                </ReviewSection>
             </ReviewSection>
         </div>
       </div>
 
-      {/* --- MAIN CONTENT GRID --- */}
       <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-10 mt-0 lg:-mt-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
-            
-            {/* LEFT: Sticky Sidebar */}
             <div className="lg:col-span-4 space-y-6 md:space-y-8 h-fit lg:sticky lg:top-32 mt-0 lg:mt-32 order-1 lg:order-none">
-                {/* AUTHOR CARD */}
-                <div className="bg-white dark:bg-[#151b2b] p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] shadow-2xl border border-slate-100 dark:border-white/5 relative overflow-hidden transition-colors duration-300">
-                    <div className="flex items-center gap-4 md:gap-5 mb-6 md:mb-8">
-                        <div className="relative shrink-0"><div className="w-16 h-16 md:w-20 md:h-20 rounded-full p-1 bg-white dark:bg-[#151b2b] shadow-lg"><img src={authorProfile?.photoURL || `https://ui-avatars.com/api/?name=${story.authorName}`} className="w-full h-full rounded-full object-cover" alt="Author"/></div></div>
-                        <div className="flex-1 min-w-0">
-                            <div className="flex justify-between items-start">
-                                <div><div className="text-[10px] md:text-xs font-bold text-orange-500 tracking-widest uppercase mb-1">{authorProfile?.badge || "SCOUT"}</div><h3 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white leading-none truncate pr-2">{story.authorName}</h3></div>
-                                <button onClick={handleTrack} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all border shrink-0 ${isTracking ? "bg-transparent border-slate-300 dark:border-white/20 text-slate-500 dark:text-slate-400" : "bg-orange-500 border-orange-500 text-white hover:bg-orange-600 shadow-md hover:shadow-lg"}`}>{isTracking ? <>Tracking <Check size={12}/></> : <><Footprints size={12}/> Track +</>}</button>
-                            </div>
-                            <div className="text-[10px] text-slate-400 mt-1.5 font-medium flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${trackersCount > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}/>{trackersCount} Trackers on Radar</div>
-                        </div>
-                    </div>
-                    <div className="h-px bg-slate-100 dark:bg-white/5 w-full mb-6 md:mb-8" />
-                    <div className="grid grid-cols-2 gap-4 md:gap-8 mb-6 md:mb-8">
-                        <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Duration</div><div className="flex items-baseline gap-1"><span className="text-3xl md:text-4xl font-black text-slate-900 dark:text-white">{days.length}</span><span className="text-xs md:text-sm font-bold text-slate-400">Days</span></div></div>
-                        <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Cost</div><div className="text-3xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight">₹{story.totalCost || "0"}</div></div>
+                <div className="bg-white dark:bg-[#151b2b] p-6 rounded-[2rem] shadow-2xl border border-slate-100 dark:border-white/5 relative overflow-hidden">
+                    <div className="flex items-center gap-4 mb-6"><div className="w-16 h-16 rounded-full p-1 bg-white dark:bg-[#151b2b] shadow-lg"><img src={authorProfile?.photoURL} className="w-full h-full rounded-full object-cover"/></div><div className="flex-1"><h3 className="text-xl font-black text-slate-900 dark:text-white">{story.authorName}</h3><div className="text-xs text-slate-400 mt-1">{trackersCount} Trackers</div></div></div>
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div><div className="text-[10px] font-bold text-slate-400 uppercase">Duration</div><div className="text-3xl font-black text-slate-900 dark:text-white">{days.length} Days</div></div>
+                        
+                        {/* ⚡ WRAPPED COST IN REVIEW SECTION */}
+                        <ReviewSection id="cost" label="Cost" className="block relative" flagPosition="right-0 -top-2">
+                            <div><div className="text-[10px] font-bold text-slate-400 uppercase">Cost</div><div className="text-3xl font-black text-slate-900 dark:text-white">₹{story.totalCost}</div></div>
+                        </ReviewSection>
                     </div>
                     <div className="flex gap-3 md:gap-4">
                         <button onClick={handleLike} className={`flex-1 py-3 md:py-4 rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-2 transition-all text-sm md:text-base ${hasLiked ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-500" : "bg-slate-100 dark:bg-white/5 text-slate-900 dark:text-white hover:bg-slate-200 dark:hover:bg-white/10"}`}><Heart size={18} md:size={20} className={hasLiked ? "fill-current" : ""} /> <span>{hasLiked ? "Liked" : "Like"}</span><span className="bg-black/5 dark:bg-white/10 px-2 py-0.5 rounded-full text-xs ml-1 opacity-70">{likeCount}</span></button>
                         <button onClick={handleShare} className="flex-1 py-3 md:py-4 rounded-xl md:rounded-2xl bg-[#0B0F19] dark:bg-white text-white dark:text-[#0B0F19] font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-lg text-sm md:text-base hover:scale-[1.02]"><Share2 size={18} md:size={20}/> <span>Share</span>{shareCount > 0 && (<span className="bg-white/20 dark:bg-black/10 px-2 py-0.5 rounded-full text-xs ml-1">{shareCount}</span>)}</button>
                     </div>
                 </div>
-
-                {/* QR Code */}
-                <div className="bg-white dark:bg-[#151b2b] border border-slate-200 dark:border-white/5 p-2 rounded-2xl md:rounded-3xl shadow-sm hover:shadow-lg transition-all cursor-pointer hidden md:block" onClick={() => setShowQr(!showQr)}>
-                    <div className="bg-slate-100 dark:bg-black/20 rounded-xl md:rounded-2xl p-4 md:p-6 flex items-center justify-between group">
-                        <div className="flex items-center gap-4"><div className="w-10 h-10 bg-white dark:bg-white/10 rounded-full flex items-center justify-center shadow-sm"><QrCode size={20} className="text-slate-900 dark:text-white"/></div><div><div className="font-bold text-slate-900 dark:text-white text-sm md:text-base">Mobile View</div><div className="text-xs text-slate-500">Tap to scan</div></div></div>
-                        <ChevronRight size={20} className="text-slate-400 group-hover:translate-x-1 transition-transform"/>
-                    </div>
-                    {showQr && (<motion.div initial={{height: 0, opacity:0}} animate={{height: "auto", opacity:1}} className="px-6 pb-6 pt-2"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${window.location.href}`} alt="QR" className="w-full h-auto rounded-xl border border-slate-100 dark:border-white/5"/></motion.div>)}
-                </div>
-
-                {/* 🛡️ Info Cards (About/Notes) - WRAPPED */}
-                {(story.aboutPlace || story.specialNote) && (
-                    <div className="space-y-4">
-                        {story.aboutPlace && (
-                            <ReviewSection id="aboutPlace" label="About The Place">
-                                <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/10 dark:to-orange-900/10 border border-orange-100 dark:border-orange-500/10 p-5 md:p-6 rounded-2xl md:rounded-3xl"><div className="flex items-center gap-2 text-amber-700 dark:text-amber-500 font-bold mb-2 md:mb-3 text-sm md:text-base"><Info size={18}/> About The Place</div><p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed opacity-90">{story.aboutPlace}</p></div>
-                            </ReviewSection>
-                        )}
-                        {story.specialNote && (
-                            <ReviewSection id="specialNote" label="Pro Tips">
-                                <div className="bg-gradient-to-br from-rose-50 to-pink-50 dark:from-rose-900/10 dark:to-pink-900/10 border border-rose-100 dark:border-rose-500/10 p-5 md:p-6 rounded-2xl md:rounded-3xl"><div className="flex items-center gap-2 text-rose-700 dark:text-rose-500 font-bold mb-2 md:mb-3 text-sm md:text-base"><Lightbulb size={18}/> Pro Tips</div><p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed opacity-90">{story.specialNote}</p></div>
-                            </ReviewSection>
-                        )}
-                    </div>
-                )}
+                {(story.aboutPlace || story.specialNote) && (<div className="space-y-4">
+                    {story.aboutPlace && (<ReviewSection id="aboutPlace" label="About"><div className="bg-orange-50/50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-500/10 p-5 rounded-2xl"><div className="flex items-center gap-2 text-orange-700 font-bold mb-2"><Info size={18}/> About</div><p className="text-sm text-slate-700 dark:text-slate-300">{story.aboutPlace}</p></div></ReviewSection>)}
+                    {story.specialNote && (<ReviewSection id="specialNote" label="Tips"><div className="bg-pink-50/50 dark:bg-pink-900/10 border border-pink-100 dark:border-pink-500/10 p-5 rounded-2xl"><div className="flex items-center gap-2 text-pink-700 font-bold mb-2"><Lightbulb size={18}/> Tips</div><p className="text-sm text-slate-700 dark:text-slate-300">{story.specialNote}</p></div></ReviewSection>)}
+                </div>)}
             </div>
 
-            {/* RIGHT: Main Content (Days) */}
             <div className="lg:col-span-8 space-y-12 lg:mt-32 order-2 lg:order-none">
-                {/* 🛡️ DAY-WISE FLAGGING */}
                 {days.map((day, i) => (
                     <ReviewSection key={i} id={`day_${day.dayNumber}`} label={`Day ${day.dayNumber}`}>
                     <div className="group relative pl-6 md:pl-8 border-l-2 border-slate-200 dark:border-white/10 last:border-0 pb-12">
@@ -398,6 +346,8 @@ export default function StoryDetail() {
                             </div>
                         )}
                         <div className="prose dark:prose-invert max-w-none"><p className="text-base md:text-lg text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-line">{day.story}</p></div>
+                        
+                        {/* ⚡ RESTORED ITINERARY DETAILS */}
                         {day.highlight && (<div className="mt-6 md:mt-8 p-5 md:p-6 bg-slate-50 dark:bg-white/5 rounded-2xl border-l-4 border-orange-500 italic text-slate-600 dark:text-slate-300 text-sm md:text-base"><span className="block text-orange-500 font-bold text-[10px] md:text-xs uppercase tracking-wider mb-2">Highlight</span>"{day.highlight}"</div>)}
                         {day.food && (<div className="mt-6 flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-r from-emerald-50/50 to-teal-50/50 dark:from-emerald-900/10 dark:to-teal-900/10 border border-emerald-100 dark:border-emerald-500/20"><div className="w-12 h-12 rounded-full bg-white dark:bg-emerald-500/20 flex items-center justify-center shadow-sm shrink-0"><Utensils size={20} className="text-emerald-600 dark:text-emerald-400"/></div><div><div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-widest mb-0.5">On The Menu</div><div className="text-base font-bold text-slate-700 dark:text-slate-200">{day.food}</div></div></div>)}
                         {(day.departure || day.stay) && (
@@ -476,20 +426,8 @@ export default function StoryDetail() {
                 {hasIssues && <span className="text-xs text-slate-400 hidden md:inline">Authors will see your specific notes for each flag.</span>}
             </div>
             <div className="flex gap-3">
-                <button 
-                    onClick={() => setConfirmAction('return')} 
-                    disabled={!hasIssues || isSubmittingReview}
-                    className={`px-6 py-3 rounded-xl font-bold transition flex items-center gap-2 border border-white/10 ${hasIssues ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-900/20' : 'bg-slate-800 text-slate-500 opacity-50 cursor-not-allowed'}`}
-                >
-                    <RotateCcw size={18}/> Request Changes
-                </button>
-                <button 
-                    onClick={() => setConfirmAction('approve')} 
-                    disabled={hasIssues || isSubmittingReview}
-                    className={`px-6 py-3 rounded-xl font-bold transition flex items-center gap-2 shadow-lg ${!hasIssues ? 'bg-green-600 hover:bg-green-500 text-white shadow-green-900/20' : 'bg-slate-800 text-slate-500 opacity-50 cursor-not-allowed'}`}
-                >
-                    <Check size={18}/> Approve & Publish
-                </button>
+                <button onClick={() => setConfirmAction('return')} disabled={!hasIssues || isSubmittingReview} className="px-6 py-3 rounded-xl font-bold border border-white/10 bg-slate-800 text-slate-300 hover:bg-slate-700">Request Changes</button>
+                <button onClick={() => setConfirmAction('approve')} disabled={hasIssues || isSubmittingReview} className="px-6 py-3 rounded-xl font-bold bg-green-600 hover:bg-green-500 text-white shadow-lg">Approve & Publish</button>
             </div>
         </motion.div>
       )}
@@ -497,56 +435,24 @@ export default function StoryDetail() {
       {/* ✍️ AUTHOR STICKY FOOTER (SMART REDIRECT) */}
       {isAuthorView && (
           <motion.div initial={{ y: 100 }} animate={{ y: 0 }} className="fixed bottom-0 left-0 w-full p-4 z-[100] bg-[#111625]/90 backdrop-blur-xl border-t border-white/10 flex justify-end items-center">
-              <button 
-                  onClick={handleEditRedirect}
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold transition-all shadow-lg shadow-blue-900/30 flex items-center gap-2 hover:scale-[1.02]"
-              >
-                  <Hammer size={18}/> Edit & Fix Issues
-              </button>
+              <button onClick={handleEditRedirect} className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-lg flex items-center gap-2"><Hammer size={18}/> Edit & Fix Issues</button>
           </motion.div>
       )}
 
       {/* 🆕 PREMIUM CONFIRMATION MODAL */}
       <AnimatePresence>
         {confirmAction && (
-            <motion.div 
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 1 }} 
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
-            >
-                <motion.div 
-                    initial={{ scale: 0.9, y: 20 }}
-                    animate={{ scale: 1, y: 0 }}
-                    exit={{ scale: 0.9, y: 20 }}
-                    className="bg-[#1A1F2E] border border-white/10 p-8 rounded-3xl shadow-2xl max-w-md w-full text-center relative overflow-hidden"
-                >
-                    <div className={`absolute top-0 left-0 w-full h-2 bg-gradient-to-r ${confirmAction === 'approve' ? 'from-green-500 to-emerald-500' : 'from-orange-500 to-red-500'}`} />
-                    <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center mb-6 shadow-lg ${confirmAction === 'approve' ? 'bg-green-500/20 text-green-500' : 'bg-orange-500/20 text-orange-500'}`}>
-                        {confirmAction === 'approve' ? <ShieldCheck size={32} /> : <AlertCircle size={32} />}
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+                <div className="bg-[#1A1F2E] border border-white/10 p-8 rounded-3xl shadow-2xl max-w-md w-full text-center">
+                    <h3 className="text-2xl font-black text-white mb-2">{confirmAction === 'approve' ? "Publish Story?" : "Return to Author?"}</h3>
+                    <div className="flex gap-3 mt-6">
+                        <button onClick={() => setConfirmAction(null)} className="flex-1 py-3 rounded-xl font-bold bg-slate-800 text-slate-300">Cancel</button>
+                        <button onClick={confirmAction === 'approve' ? processApprove : processReturn} className="flex-1 py-3 rounded-xl font-bold bg-orange-600 text-white">Yes, Confirm</button>
                     </div>
-                    <h3 className="text-2xl font-black text-white mb-2">{confirmAction === 'approve' ? "Ready to Publish?" : "Return to Author?"}</h3>
-                    <p className="text-slate-400 mb-8 leading-relaxed">
-                        {confirmAction === 'approve' 
-                            ? "This story will be live for everyone to see. The author will be rewarded." 
-                            : `You have flagged ${Object.keys(feedback).length} issues. The story will be sent back for revisions.`
-                        }
-                    </p>
-                    <div className="flex gap-3">
-                        <button onClick={() => setConfirmAction(null)} className="flex-1 py-3 rounded-xl font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors">Cancel</button>
-                        <button 
-                            onClick={confirmAction === 'approve' ? processApprove : processReturn}
-                            disabled={isSubmittingReview}
-                            className={`flex-1 py-3 rounded-xl font-bold text-white transition-all shadow-lg flex items-center justify-center gap-2 ${confirmAction === 'approve' ? 'bg-green-600 hover:bg-green-500 shadow-green-900/20' : 'bg-orange-600 hover:bg-orange-500 shadow-orange-900/20'}`}
-                        >
-                            {isSubmittingReview ? "Processing..." : (confirmAction === 'approve' ? "Yes, Publish" : "Yes, Return")}
-                        </button>
-                    </div>
-                </motion.div>
-            </motion.div>
+                </div>
+            </div>
         )}
       </AnimatePresence>
-
     </div>
     </ReviewContext.Provider>
   );
@@ -560,9 +466,8 @@ const ReviewSection = ({ id, label, children, className, flagPosition = "-right-
     
     useEffect(() => { 
         if(feedback[id]) setComment(feedback[id]); 
-        // ⚡ AUTO OPEN IF AUTHOR IS VIEWING FLAGS (DIAGNOSTIC MODE)
-        if(isAuthorView && feedback[id]) setIsOpen(true);
-    }, [feedback, id, isAuthorView]);
+        // ⚡ REMOVED AUTO-OPEN FOR AUTHOR (Collapsed by default)
+    }, [feedback, id]);
 
     const hasIssue = !!feedback[id];
     const shouldShowFlag = isAdminView || (isAuthorView && hasIssue);
@@ -582,25 +487,26 @@ const ReviewSection = ({ id, label, children, className, flagPosition = "-right-
                 // ADMIN VIEW: FLAGGING BUTTON
                 <button 
                     onClick={() => setIsOpen(!isOpen)} 
-                    className={`absolute ${flagPosition} z-30 p-2 rounded-full shadow-xl transition-all transform hover:scale-110 
-                    ${hasIssue ? flagColor : 'bg-white text-slate-400 hover:text-red-500 border border-slate-200'}`} 
+                    className={`absolute ${flagPosition} z-50 p-2 rounded-full shadow-xl transition-all transform hover:scale-110 
+                    ${hasIssue ? flagColor : 'bg-white text-slate-400 border border-slate-200'}`} 
                     title={isResubmission ? "Verify Author's Fix" : "Flag Issue"}
                 >
                     {hasIssue ? flagIcon : <Flag size={16}/>}
                 </button>
             ) : (
-                // AUTHOR VIEW: STATIC BADGE (Click to read)
+                // AUTHOR VIEW: UPDATED BADGE (Collapsed, Click to View)
                 <button 
                     onClick={() => setIsOpen(!isOpen)} 
-                    className={`absolute ${flagPosition} z-30 px-3 py-1.5 rounded-full shadow-xl bg-red-600 text-white text-xs font-bold flex items-center gap-2 animate-bounce`} 
+                    className={`absolute ${flagPosition} z-50 px-4 py-2 rounded-full shadow-xl bg-red-600 text-white text-xs font-bold flex items-center gap-2 animate-bounce cursor-pointer hover:bg-red-700 transition-colors`} 
                 >
-                    <AlertTriangle size={12} fill="currentColor"/> Correction Needed
+                    <AlertTriangle size={14} fill="currentColor"/>
+                    <span>Action Required (Click to View)</span>
                 </button>
             )}
 
             <AnimatePresence>
                 {isOpen && (
-                    <motion.div initial={{ opacity: 0, scale: 0.9, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 10 }} className="absolute right-0 top-8 z-40 w-72 bg-[#1A1F2E] border border-white/10 rounded-xl shadow-2xl p-4">
+                    <motion.div initial={{ opacity: 0, scale: 0.9, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 10 }} className="absolute right-0 top-8 z-50 w-72 bg-[#1A1F2E] border border-white/10 rounded-xl shadow-2xl p-4">
                         <div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-slate-400 uppercase">{isResubmission ? "Verify Modification" : `Issue with ${label}`}</span><button onClick={() => setIsOpen(false)}><X size={14} className="text-slate-500"/></button></div>
                         <textarea 
                             className={`w-full h-24 bg-black/20 border border-white/10 rounded-lg p-2 text-sm text-white focus:outline-none focus:border-red-500 resize-none mb-3 ${!isAdminView ? 'cursor-not-allowed opacity-80' : ''}`} 
@@ -614,7 +520,7 @@ const ReviewSection = ({ id, label, children, className, flagPosition = "-right-
                             {isAdminView ? (
                                 <>
                                     {hasIssue && (<button onClick={() => { toggleFeedback(id, null); setComment(""); setIsOpen(false); }} className="flex-1 py-2 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-500 flex items-center justify-center gap-1"><Check size={12}/> Resolve</button>)}
-                                    <button onClick={() => { if(!comment.trim()) return toast.error("Please write a comment"); toggleFeedback(id, comment); setIsOpen(false); toast.success("Flagged!"); }} className={`flex-1 py-2 rounded-lg text-white text-xs font-bold ${isResubmission ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500'}`}>{hasIssue ? "Update Note" : "Flag Issue"}</button>
+                                    <button onClick={() => { if(!comment.trim()) return toast.error("Write comment"); toggleFeedback(id, comment); setIsOpen(false); toast.success("Flagged!"); }} className={`flex-1 py-2 rounded-lg text-white text-xs font-bold ${isResubmission ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500'}`}>{hasIssue ? "Update Note" : "Flag Issue"}</button>
                                 </>
                             ) : (
                                 <button onClick={() => setIsOpen(false)} className="w-full py-2 rounded-lg bg-slate-700 text-white text-xs font-bold hover:bg-slate-600">Close</button>

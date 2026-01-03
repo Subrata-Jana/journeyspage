@@ -85,10 +85,15 @@ export default function CreateStory() {
   };
 
   // ⚡ SMART LOCK: Only allow editing flagged fields if returned
+  // Mapped to match Admin Flag IDs: 'title', 'location', 'meta', 'cost', 'aboutPlace', 'specialNote', etc.
   const isFieldLocked = (fieldName) => {
     if (storyStatus === "draft") return false;
     if (storyStatus === "pending" || storyStatus === "approved") return true;
-    if (storyStatus === "returned") return !feedback[fieldName]; 
+    
+    if (storyStatus === "returned") {
+        // If feedback exists for this field, it is UNLOCKED.
+        return !feedback[fieldName];
+    }
     return false; 
   };
 
@@ -126,8 +131,13 @@ export default function CreateStory() {
 
         const data = storySnap.data();
         setStoryStatus(data.status || "draft");
+        setStoryId(editId); 
         
         if (data.feedback) setFeedback(data.feedback);
+        
+        if (data.modifiedFlags) {
+            setModifiedFields(data.modifiedFlags);
+        }
 
         const daysRef = collection(db, "stories", editId, "days");
         const daysQuery = query(daysRef, orderBy("dayNumber", "asc"));
@@ -187,7 +197,7 @@ export default function CreateStory() {
   };
 
   const handleDateChange = (e) => {
-    trackChange('meta');
+    trackChange('meta'); // Matches Admin 'meta' flag
     const val = e.target.value;
     if (!val) return setTrip({ ...trip, month: "" });
     const [year, month] = val.split("-");
@@ -298,10 +308,6 @@ export default function CreateStory() {
         }
     }
 
-    // ⚡ SMART STATUS LOGIC
-    // Publish -> pending, published=true
-    // Save Draft (Returned) -> returned, published=false
-    // Save Draft (New) -> draft, published=false
     let targetStatus = 'draft';
     let isPublished = false;
 
@@ -318,7 +324,8 @@ export default function CreateStory() {
       setIsSubmitting(true);
       setLoading(true);
 
-      let activeId = storyId;
+      let activeId = storyId; 
+      
       if (!activeId) {
         const newDoc = await addDoc(collection(db, "stories"), { 
             title: trip.title, location: trip.location, authorId: user.uid,
@@ -326,6 +333,7 @@ export default function CreateStory() {
             revisionCount: 0, revisionHistory: []
         });
         activeId = newDoc.id;
+        setStoryId(activeId); 
       }
 
       let coverUrl = trip.coverImage;
@@ -345,19 +353,25 @@ export default function CreateStory() {
         aboutPlace: trip.aboutPlace, specialNote: trip.specialNote,
         youtubeLink: trip.enableYoutube ? trip.youtubeLink : "",
         authorId: user.uid, authorName: userProfile?.name || "Explorer",
-        published: isPublished, // ⚡ Correctly set based on action
+        published: isPublished,
         status: targetStatus,
         coverImage: coverUrl, coverImageCaption: trip.coverImageCaption || "",
         gallery: finalGallery, updatedAt: serverTimestamp(),
+        modifiedFlags: modifiedFields // ⚡ Save Amber States
       };
 
       await updateDoc(doc(db, "stories", activeId), updatePayload);
 
       const oldDays = await getDocs(collection(db, "stories", activeId, "days"));
-      await Promise.all(oldDays.docs.map(d => deleteDoc(d.ref)));
+      const deletePromises = oldDays.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(deletePromises);
+
       for (let i = 0; i < trip.days.length; i++) {
-        let dayImg = trip.days[i].imagePreview;
-        if (trip.days[i].imageFile) dayImg = await uploadImage(`stories/${activeId}/days/day-${i + 1}.jpg`, trip.days[i].imageFile);
+        let dayImg = trip.days[i].imagePreview; 
+        if (trip.days[i].imageFile) {
+            dayImg = await uploadImage(`stories/${activeId}/days/day-${i + 1}-${Date.now()}.jpg`, trip.days[i].imageFile);
+        }
+        
         await addDoc(collection(db, "stories", activeId, "days"), { 
             title: trip.days[i].title, story: trip.days[i].story, 
             departure: trip.days[i].departure, destination: trip.days[i].destination,
@@ -375,6 +389,14 @@ export default function CreateStory() {
       setIsSubmitting(false);
     }
   };
+
+  if (loading) {
+      return (
+        <div className="min-h-screen bg-slate-50 dark:bg-[#0B0F19] flex items-center justify-center">
+            <Loader2 className="animate-spin text-orange-500" size={32} />
+        </div>
+      );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0B0F19] transition-colors duration-300">
@@ -409,7 +431,6 @@ export default function CreateStory() {
           <button onClick={() => navigate("/dashboard")} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-sm font-medium">Cancel</button>
         </div>
 
-        {/* 🛑 STATIC REVISION BANNER */}
         {isReturned && (
             <div className="mb-8 bg-red-500/10 border border-red-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-4">
                 <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
@@ -432,13 +453,19 @@ export default function CreateStory() {
               <span className="w-1 h-6 bg-orange-500 rounded-full" /> Trip Essentials
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* ⚡ UPDATED KEY MAPPING TO MATCH ADMIN IDS ⚡ */}
               <InputGroup label="Story Title" value={trip.title} disabled={isFieldLocked('title')} onChange={e => {setTrip({ ...trip, title: e.target.value }); trackChange('title');}} placeholder="e.g. Lost in Ladakh" feedback={feedback['title']} isModified={modifiedFields['title']} />
               <InputGroup label="Location" value={trip.location} disabled={isFieldLocked('location')} onChange={e => {setTrip({ ...trip, location: e.target.value }); trackChange('location');}} placeholder="e.g. Leh, India" feedback={feedback['location']} isModified={modifiedFields['location']} />
+              
+              {/* Note: Admin flags 'meta' for Month/Type/Diff. User checks 'meta'. */}
               <InputGroup label="Journey Month" value={getInputValueFromMonth(trip.month)} onChange={handleDateChange} disabled={isFieldLocked('meta')} type="month" feedback={feedback['meta']} isModified={modifiedFields['meta']} />
-              <InputGroup label="Total Cost (₹)" value={trip.totalCost} onChange={e => {setTrip({ ...trip, totalCost: e.target.value }); trackChange('meta');}} disabled={isFieldLocked('meta')} placeholder="e.g. 15000" type="number" feedback={feedback['meta']} isModified={modifiedFields['meta']} />
-              <CustomSelect label="Trip Type" value={trip.tripType} onChange={(val) => {setTrip({ ...trip, tripType: val }); trackChange('meta');}} options={tripTypes} disabled={isFieldLocked('meta')} placeholder="Select Type..." />
-              <CustomSelect label="Difficulty" value={trip.difficulty} onChange={(val) => {setTrip({ ...trip, difficulty: val }); trackChange('meta');}} options={difficulties} disabled={isFieldLocked('meta')} placeholder="Select Level..." />
-              <CustomSelect label="Category" value={trip.category} onChange={(val) => {setTrip({ ...trip, category: val }); trackChange('meta');}} options={categories} disabled={isFieldLocked('meta')} placeholder="Select Category..." />
+              
+              {/* Note: Admin flags 'cost'. User checks 'cost'. */}
+              <InputGroup label="Total Cost (₹)" value={trip.totalCost} onChange={e => {setTrip({ ...trip, totalCost: e.target.value }); trackChange('cost');}} disabled={isFieldLocked('cost')} placeholder="e.g. 15000" type="number" feedback={feedback['cost']} isModified={modifiedFields['cost']} />
+              
+              <CustomSelect label="Trip Type" value={trip.tripType} onChange={(val) => {setTrip({ ...trip, tripType: val }); trackChange('meta');}} options={tripTypes} disabled={isFieldLocked('meta')} placeholder="Select Type..." feedback={feedback['meta']} isModified={modifiedFields['meta']} />
+              <CustomSelect label="Difficulty" value={trip.difficulty} onChange={(val) => {setTrip({ ...trip, difficulty: val }); trackChange('meta');}} options={difficulties} disabled={isFieldLocked('meta')} placeholder="Select Level..." feedback={feedback['meta']} isModified={modifiedFields['meta']} />
+              <CustomSelect label="Category" value={trip.category} onChange={(val) => {setTrip({ ...trip, category: val }); trackChange('meta');}} options={categories} disabled={isFieldLocked('meta')} placeholder="Select Category..." feedback={feedback['meta']} isModified={modifiedFields['meta']} />
             </div>
           </div>
 
@@ -465,7 +492,6 @@ export default function CreateStory() {
               <input type="file" accept="image/*" hidden disabled={isFieldLocked('coverImage')} onChange={(e) => handleCoverImageChange(e.target.files[0])} />
             </label>
             
-            {/* ⚡ SMART FEEDBACK BOX */}
             {feedback['coverImage'] && (
                 <div className={`border rounded-xl p-3 flex items-start gap-3 ${modifiedFields['coverImage'] ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-500/20' : 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-500/20'}`}>
                     {modifiedFields['coverImage'] ? <CheckCircle2 className="text-amber-500 shrink-0 mt-0.5" size={18} /> : <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={18} />}
@@ -630,7 +656,7 @@ export default function CreateStory() {
 
           {storyStatus !== "pending" && storyStatus !== "approved" && (
             <div className="grid grid-cols-2 gap-4 sticky bottom-4 z-20">
-              <button onClick={() => submitStory(false)} disabled={isSubmitting} className="py-4 rounded-xl bg-white dark:bg-[#1A1F2E] text-slate-900 dark:text-white font-medium border border-slate-200 dark:border-white/10 hover:bg-slate-100 flex items-center justify-center gap-2 shadow-lg">
+              <button onClick={() => submitStory(false)} disabled={isSubmitting} className="py-4 rounded-xl bg-white dark:bg-[#1A1F2E] text-slate-600 dark:text-white font-medium border border-slate-200 dark:border-white/10 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 flex items-center justify-center gap-2 shadow-lg transition-colors">
                 {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18} />} Save Draft
               </button>
               <button onClick={() => submitStory(true)} disabled={isSubmitting} className={`py-4 rounded-xl text-white font-bold hover:shadow-orange-500/20 hover:scale-[1.02] flex items-center justify-center gap-2 shadow-lg ${isReturned ? 'bg-red-600 hover:bg-red-500 shadow-red-500/20' : 'bg-gradient-to-r from-orange-600 to-orange-500'}`}>
@@ -690,7 +716,7 @@ const InputGroup = ({ label, value, onChange, placeholder, type = "text", disabl
 );
 
 // ⚡ CUSTOM SELECT
-const CustomSelect = ({ label, value, onChange, options, placeholder, disabled }) => {
+const CustomSelect = ({ label, value, onChange, options, placeholder, disabled, feedback, isModified }) => {
   const [isOpen, setIsOpen] = useState(false);
   const safeOptions = Array.isArray(options) ? options : [];
   const selectedOption = safeOptions.find(o => o.value === value || o.label === value);
@@ -704,7 +730,22 @@ const CustomSelect = ({ label, value, onChange, options, placeholder, disabled }
   return (
     <div className={`space-y-1 relative ${isOpen ? "z-50" : "z-0"}`}>
       <label className="text-xs font-medium text-slate-500 dark:text-slate-400 ml-1">{label}</label>
-      <button type="button" disabled={disabled} onClick={() => setIsOpen(!isOpen)} className={`w-full bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-left flex items-center justify-between text-slate-900 dark:text-white transition-colors focus:outline-none ${disabled ? "opacity-70 cursor-not-allowed bg-slate-200 dark:bg-white/5" : "hover:border-orange-500"}`}>{selectedOption ? (<div className="flex items-center gap-2">{selectedOption.icon && (<div style={{ color: getColorHex(selectedOption.color) }}>{renderIcon(selectedOption.icon)}</div>)}<span>{selectedOption.label}</span></div>) : (<span className="text-slate-400 dark:text-white/30">{placeholder}</span>)}<ChevronDown size={16} className={`text-slate-400 dark:text-white/30 transition-transform ${isOpen ? 'rotate-180' : ''}`} /></button>
+      <button type="button" disabled={disabled} onClick={() => setIsOpen(!isOpen)} 
+        className={`w-full bg-slate-100 dark:bg-black/20 border rounded-xl px-4 py-3 text-left flex items-center justify-between text-slate-900 dark:text-white transition-colors focus:outline-none 
+        ${disabled ? "opacity-70 cursor-not-allowed bg-slate-200 dark:bg-white/5 border-slate-200 dark:border-white/10" : "hover:border-orange-500 border-slate-200 dark:border-white/10"}
+        ${feedback ? (isModified ? "border-amber-500 ring-1 ring-amber-500/20" : "border-red-500 ring-1 ring-red-500/20") : ""}
+      `}>
+        {selectedOption ? (<div className="flex items-center gap-2">{selectedOption.icon && (<div style={{ color: getColorHex(selectedOption.color) }}>{renderIcon(selectedOption.icon)}</div>)}<span>{selectedOption.label}</span></div>) : (<span className="text-slate-400 dark:text-white/30">{placeholder}</span>)}<ChevronDown size={16} className={`text-slate-400 dark:text-white/30 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      
+      {/* ⚡ SMART FEEDBACK MESSAGE FOR SELECT */}
+      {feedback && (
+        <div className={`text-xs p-2 rounded-lg border flex items-start gap-2 mt-1 ${isModified ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/10 dark:text-amber-400 dark:border-amber-500/20' : 'bg-red-50 text-red-600 border-red-100 dark:bg-red-900/10 dark:text-red-400 dark:border-red-500/20'}`}>
+            {isModified ? <CheckCircle2 size={14} className="mt-0.5 shrink-0"/> : <AlertCircle size={14} className="mt-0.5 shrink-0"/>}
+            <span><span className="font-bold">{isModified ? 'Change Detected:' : 'Correction Needed:'}</span> {isModified ? 'Save to submit this fix.' : feedback}</span>
+        </div>
+      )}
+
       <AnimatePresence>
         {isOpen && !disabled && (
           <>

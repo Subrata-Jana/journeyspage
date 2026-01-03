@@ -11,7 +11,7 @@ import {
   Award, List, Gem, Edit2, Trash2, Save, 
   Plus, Search, X, Gift, LogOut, Sun, Moon, User, 
   CheckCircle, RotateCcw, Eye, Clock, Image as ImageIcon, UploadCloud, Menu,
-  AlertCircle
+  AlertCircle, ArrowUp, ArrowDown, Filter
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import * as LucideIcons from "lucide-react"; 
@@ -180,23 +180,26 @@ function SidebarItem({ icon, label, active, onClick, isDark }) {
     )
 }
 
-// --- 🛡️ FIXED STORY MODERATION COMPONENT ---
+// --- 🛡️ UPGRADED STORY MODERATION ---
 function StoryModeration({ isDark }) {
     const [allStories, setAllStories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState("pending");
+    const [searchQuery, setSearchQuery] = useState("");
+    const [sortOrder, setSortOrder] = useState("desc"); // 'desc' | 'asc'
     const navigate = useNavigate();
 
     // ⚡ STATE FOR RETURN MODAL
     const [showReturnModal, setShowReturnModal] = useState(false);
     const [storyToReturn, setStoryToReturn] = useState(null);
     const [returnReason, setReturnReason] = useState(""); 
-    const [isReturning, setIsReturning] = useState(false); // Added loading state
+    const [isReturning, setIsReturning] = useState(false); 
 
     useEffect(() => {
         async function fetchStories() {
             try {
-                const q = query(collection(db, "stories"), orderBy("createdAt", "desc"));
+                // ⚡ SORT BY DATE TO ENABLE TRACEABILITY
+                const q = query(collection(db, "stories"), orderBy("createdAt", sortOrder));
                 const snap = await getDocs(q);
                 const fetched = snap.docs.map((d) => ({ 
                     id: d.id, 
@@ -213,17 +216,41 @@ function StoryModeration({ isDark }) {
             }
         }
         fetchStories();
-    }, []);
+    }, [sortOrder]); // Re-fetch when sort order changes
 
+    // ⚡ FILTER & SEARCH LOGIC
     const filteredStories = useMemo(() => {
-        if (filterStatus === 'all') return allStories;
-        return allStories.filter(story => {
-            if (filterStatus === 'pending') {
-                return story.published && story.status !== 'approved' && story.status !== 'returned';
-            }
-            return story.status === filterStatus;
-        });
-    }, [allStories, filterStatus]);
+        let stories = allStories;
+
+        // 1. Status Filter
+        if (filterStatus !== 'all') {
+            stories = stories.filter(story => {
+                if (filterStatus === 'pending') {
+                    return story.published && story.status !== 'approved' && story.status !== 'returned';
+                }
+                return story.status === filterStatus;
+            });
+        }
+
+        // 2. Search Filter
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            stories = stories.filter(s => 
+                (s.title && s.title.toLowerCase().includes(q)) || 
+                (s.authorName && s.authorName.toLowerCase().includes(q))
+            );
+        }
+
+        return stories;
+    }, [allStories, filterStatus, searchQuery]);
+
+    // ⚡ STATS CALCULATION
+    const stats = useMemo(() => {
+        const pending = allStories.filter(s => s.published && s.status !== 'approved' && s.status !== 'returned').length;
+        const approved = allStories.filter(s => s.status === 'approved').length;
+        const total = allStories.length;
+        return { pending, approved, total };
+    }, [allStories]);
 
     const handleReview = (story) => {
         navigate(`/story/${story.id}`, { state: { adminView: true } });
@@ -238,97 +265,112 @@ function StoryModeration({ isDark }) {
         } catch (e) { toast.error("Failed to delete"); }
     };
 
-    // ⚡ OPEN MODAL
     const openReturnModal = (story) => {
         setStoryToReturn(story);
         setReturnReason(""); 
         setShowReturnModal(true);
     };
 
-    // ⚡ FIXED SUBMIT LOGIC
     const submitReturn = async () => {
         if (!storyToReturn) return;
-
-        // 1. Detect if flags already exist from the Review page
         const existingFeedback = storyToReturn.feedback || {};
         const hasFlags = Object.keys(existingFeedback).length > 0;
         const note = returnReason.trim();
 
-        // 2. LOGIC FIX: Allow return if Flags exist OR Note exists
-        if (!hasFlags && !note) {
-            return toast.error("Please enter a reason or flag issues.");
-        }
+        if (!hasFlags && !note) return toast.error("Please enter a reason or flag issues.");
 
         setIsReturning(true);
-
         try {
             const storyRef = doc(db, "stories", storyToReturn.id);
-            
-            // 3. Merge Feedback: If user added a text note, ensure it's saved
             const finalFeedback = { ...existingFeedback };
-            if (note) {
-                finalFeedback.general = note; 
-            }
+            if (note) finalFeedback.general = note; 
 
-            // 4. Update Firestore
             await updateDoc(storyRef, {
                 status: "returned",
-                published: false, // Important: Unpublish so author can edit
+                published: false, 
                 adminNotes: note || "Please check flagged items.", 
                 feedback: finalFeedback
             });
 
-            // 5. Update UI instantly
             setAllStories(prev => prev.map(s => s.id === storyToReturn.id ? { 
-                ...s, 
-                status: "returned", 
-                published: false,
-                adminNotes: note,
-                feedback: finalFeedback
+                ...s, status: "returned", published: false, adminNotes: note, feedback: finalFeedback
             } : s));
             
             toast.success("Story returned to author!");
             setShowReturnModal(false);
         } catch (error) {
-            console.error("Return error:", error);
             toast.error("Failed to return story.");
         } finally {
             setIsReturning(false);
         }
     };
 
-    const StatusTab = ({ id, label, icon: Icon, color }) => (
+    const StatusTab = ({ id, label, icon: Icon, count, color }) => (
         <button 
             onClick={() => setFilterStatus(id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all relative overflow-hidden group
             ${filterStatus === id 
                 ? `${color} shadow-lg scale-105` 
                 : isDark ? 'text-slate-400 hover:bg-white/5' : 'text-slate-500 hover:bg-slate-100'
             }`}
         >
-            <Icon size={16} /> {label}
-            <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${filterStatus === id ? 'bg-white/20' : 'bg-slate-200 dark:bg-slate-800'}`}>
-                {id === 'all' ? allStories.length : 
-                 id === 'pending' ? allStories.filter(s => s.published && s.status !== 'approved' && s.status !== 'returned').length :
-                 allStories.filter(s => s.status === id).length}
-            </span>
+            <Icon size={16} className="relative z-10"/> <span className="relative z-10">{label}</span>
+            {count !== undefined && <span className={`relative z-10 ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${filterStatus === id ? 'bg-white/20' : 'bg-slate-200 dark:bg-slate-800'}`}>{count}</span>}
         </button>
     );
 
     const cardClass = isDark ? "bg-[#111625] border-white/5" : "bg-white border-slate-200 shadow-sm";
-
-    // Count issues for Modal UI
     const issueCount = storyToReturn ? Object.keys(storyToReturn.feedback || {}).length : 0;
 
     return (
         <div className="space-y-6 animate-in slide-in-from-right duration-500 pb-20">
-            <h2 className={`text-3xl font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
-                <ShieldAlert className="text-orange-500"/> Story Moderation
-            </h2>
+            {/* ⚡ PREMIUM STATS HEADER */}
+            <div className="grid grid-cols-3 gap-4 mb-2">
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-blue-500/10 border-blue-500/20' : 'bg-blue-50 border-blue-100'}`}>
+                    <div className="text-xs font-bold uppercase tracking-wider text-blue-500 mb-1">Pending Review</div>
+                    <div className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>{stats.pending}</div>
+                </div>
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-green-500/10 border-green-500/20' : 'bg-green-50 border-green-100'}`}>
+                    <div className="text-xs font-bold uppercase tracking-wider text-green-500 mb-1">Approved</div>
+                    <div className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>{stats.approved}</div>
+                </div>
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-800/50 border-white/10' : 'bg-slate-50 border-slate-100'}`}>
+                    <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Total Stories</div>
+                    <div className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>{stats.total}</div>
+                </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <h2 className={`text-3xl font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                    <ShieldAlert className="text-orange-500"/> Story Moderation
+                </h2>
+                
+                {/* ⚡ SEARCH & SORT BAR */}
+                <div className="flex gap-2 w-full md:w-auto">
+                    <div className={`relative flex-1 md:w-64`}>
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                        <input 
+                            type="text" 
+                            placeholder="Search title or author..." 
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className={`w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none border transition-colors ${isDark ? 'bg-black/20 border-white/10 text-white focus:border-orange-500' : 'bg-white border-slate-200 text-slate-800 focus:border-orange-500'}`}
+                        />
+                    </div>
+                    <button 
+                        onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                        className={`px-3 rounded-xl border flex items-center gap-2 text-sm font-bold transition-all ${isDark ? 'bg-black/20 border-white/10 text-slate-300 hover:text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                        title={sortOrder === 'desc' ? "Newest First" : "Oldest First"}
+                    >
+                        {sortOrder === 'desc' ? <ArrowDown size={16}/> : <ArrowUp size={16}/>}
+                        <span className="hidden md:inline">Date</span>
+                    </button>
+                </div>
+            </div>
 
             <div className={`p-1.5 rounded-xl flex flex-wrap gap-2 ${isDark ? 'bg-black/20 border border-white/5' : 'bg-slate-100 border border-slate-200'}`}>
-                <StatusTab id="pending" label="Pending" icon={Clock} color="bg-blue-600 text-white" />
-                <StatusTab id="approved" label="Approved" icon={CheckCircle} color="bg-green-600 text-white" />
+                <StatusTab id="pending" label="Pending" icon={Clock} count={stats.pending} color="bg-blue-600 text-white" />
+                <StatusTab id="approved" label="Approved" icon={CheckCircle} count={stats.approved} color="bg-green-600 text-white" />
                 <StatusTab id="returned" label="Returned" icon={RotateCcw} color="bg-orange-600 text-white" />
                 <StatusTab id="all" label="All" icon={List} color="bg-slate-600 text-white" />
             </div>
@@ -340,19 +382,20 @@ function StoryModeration({ isDark }) {
                         <tr>
                             <th className="p-4">Story</th>
                             <th className="p-4">Author</th>
+                            <th className="p-4">Submitted</th> {/* ⚡ NEW COLUMN */}
                             <th className="p-4">Status</th>
                             <th className="p-4 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody className={`divide-y text-sm ${isDark ? 'divide-white/5' : 'divide-slate-100'}`}>
-                        {loading && <tr><td colSpan="4" className="p-8 text-center text-slate-500">Loading...</td></tr>}
-                        {!loading && filteredStories.length === 0 && <tr><td colSpan="4" className="p-12 text-center opacity-50 italic">No stories found.</td></tr>}
+                        {loading && <tr><td colSpan="5" className="p-8 text-center text-slate-500">Loading...</td></tr>}
+                        {!loading && filteredStories.length === 0 && <tr><td colSpan="5" className="p-12 text-center opacity-50 italic">No stories found.</td></tr>}
                         
                         {filteredStories.map(story => (
                             <tr key={story.id} className={`transition-colors ${isDark ? 'hover:bg-white/[0.02]' : 'hover:bg-slate-50'}`}>
                                 <td className="p-4 max-w-[250px]">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 rounded-lg bg-slate-800 shrink-0 overflow-hidden">
+                                        <div className="w-12 h-12 rounded-lg bg-slate-800 shrink-0 overflow-hidden relative">
                                             {story.coverImage ? <img src={story.coverImage} className="w-full h-full object-cover" alt=""/> : <div className="w-full h-full flex items-center justify-center text-slate-500"><ImageIcon size={16}/></div>}
                                         </div>
                                         <div>
@@ -363,7 +406,21 @@ function StoryModeration({ isDark }) {
                                         </div>
                                     </div>
                                 </td>
-                                <td className={`p-4 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{story.authorName || "Unknown"}</td>
+                                <td className={`p-4 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-white font-bold overflow-hidden">
+                                            {/* You could add author avatar logic here later */}
+                                            {story.authorName?.[0] || <User size={12}/>}
+                                        </div>
+                                        {story.authorName || "Unknown"}
+                                    </div>
+                                </td>
+                                {/* ⚡ TRACEABLE DATE COLUMN */}
+                                <td className={`p-4 text-xs font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                                    {story.createdAt?.seconds ? new Date(story.createdAt.seconds * 1000).toLocaleDateString() : "N/A"}
+                                    <br/>
+                                    {story.createdAt?.seconds && new Date(story.createdAt.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                </td>
                                 <td className="p-4">
                                     <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide inline-flex items-center gap-1.5
                                         ${story.status === 'approved' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
@@ -372,6 +429,8 @@ function StoryModeration({ isDark }) {
                                           'bg-slate-500/10 text-slate-500 border border-slate-500/20'}
                                     `}>
                                         {story.status === 'approved' && <CheckCircle size={12}/>}
+                                        {story.status === 'returned' && <RotateCcw size={12}/>}
+                                        {story.published && story.status !== 'approved' && story.status !== 'returned' && <Clock size={12}/>}
                                         {story.status || (story.published ? "Pending" : "Draft")}
                                     </span>
                                 </td>
@@ -379,9 +438,9 @@ function StoryModeration({ isDark }) {
                                     <div className="flex justify-end gap-2">
                                         <button 
                                             onClick={() => handleReview(story)} 
-                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-lg flex items-center gap-2 font-bold transition-all hover:scale-105"
+                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-lg flex items-center gap-2 font-bold transition-all hover:scale-105 text-xs"
                                         >
-                                            <Eye size={16}/> Review
+                                            <Eye size={14}/> Review
                                         </button>
 
                                         {/* Show Return Button if not already Returned/Approved */}
@@ -415,7 +474,6 @@ function StoryModeration({ isDark }) {
             {showReturnModal && storyToReturn && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="w-full max-w-sm p-8 rounded-3xl shadow-2xl bg-[#1A1F2E] border border-white/10 text-center relative overflow-hidden">
-                        {/* Glow effect */}
                         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-orange-500/20 rounded-full blur-3xl pointer-events-none"/>
                         
                         <div className="relative z-10 flex flex-col items-center">
@@ -675,7 +733,7 @@ function ManageLoot({ isDark }) {
                           {catItems.map(item => (
                               <div key={item.id} className={`flex items-center gap-3 p-3 rounded-xl border relative group ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
                                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0
-                                      {item.rarity === 'Common' ? 'bg-slate-500' : item.rarity === 'Uncommon' ? 'bg-emerald-600' : 'bg-yellow-600 shadow-[0_0_15px_rgba(234,179,8,0.3)]'}
+                                      ${item.rarity === 'Common' ? 'bg-slate-500' : item.rarity === 'Uncommon' ? 'bg-emerald-600' : 'bg-yellow-600 shadow-[0_0_15px_rgba(234,179,8,0.3)]'}
                                   `}>{renderIcon(item.icon)}</div>
                                   <div className="flex-1 min-w-0">
                                       <p className={`font-bold text-sm truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{item.name}</p>
