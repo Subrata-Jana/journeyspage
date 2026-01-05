@@ -16,6 +16,7 @@ import toast, { Toaster } from "react-hot-toast";
 import { db } from "../services/firebase";
 import { useMetaOptions } from "../hooks/useMetaOptions"; 
 import GallerySlider from "../components/GallerySlider"; 
+import { toggleStoryLike, toggleUserTrack } from "../services/gamificationService";
 
 // --- CONTEXT FOR SMART REVIEW ---
 const ReviewContext = createContext();
@@ -114,7 +115,13 @@ export default function StoryDetail() {
         setIsAuthorView(isAuthor && isReturned);
 
         // Load feedback if it exists (Source of Truth)
-        if (storyData.feedback) setFeedback(storyData.feedback);
+        if (storyData.feedback) {
+            const cleanFeedback = {};
+            Object.entries(storyData.feedback).forEach(([k, v]) => {
+                if (v && v.trim() !== "") cleanFeedback[k] = v;
+            });
+            setFeedback(cleanFeedback);
+        }
 
         // Access Control
         if (!storyData.published && !isAuthor && !isAdminView) {
@@ -176,8 +183,51 @@ export default function StoryDetail() {
   }, [storyId]);
 
   // --- PLACEHOLDERS FOR SOCIAL ACTIONS ---
-  const handleTrack = async () => { /* Add tracking logic */ };
-  const handleLike = () => { /* Add like logic */ };
+  const handleTrack = async () => {
+        if (!currentUser) return toast.error("Please login to track scouts");
+        if (currentUser.uid === story.authorId) return toast.error("You cannot track yourself!");
+
+        // 1. Optimistic UI
+        const previousTracking = isTracking;
+        const previousCount = trackersCount;
+
+        setIsTracking(!isTracking);
+        setTrackersCount(prev => isTracking ? prev - 1 : prev + 1);
+
+        // 2. Database Call
+        const result = await toggleUserTrack(story.authorId, currentUser.uid);
+
+        if (!result.success) {
+            setIsTracking(previousTracking);
+            setTrackersCount(previousCount);
+            toast.error("Action failed");
+        } else if (!previousTracking) {
+            toast.success(`Tracking ${story.authorName}! (+10 XP)`);
+        }
+    };
+  const handleLike = async () => {
+        if (!currentUser) return toast.error("Please login to like stories");
+        
+        // 1. Optimistic UI Update (Immediate feedback)
+        const previousLiked = hasLiked;
+        const previousCount = likeCount;
+        
+        setHasLiked(!hasLiked);
+        setLikeCount(prev => hasLiked ? prev - 1 : prev + 1);
+
+        // 2. Database Call
+        const result = await toggleStoryLike(story.id, currentUser.uid, story.authorId);
+        
+        if (!result.success) {
+            // Revert on failure
+            setHasLiked(previousLiked);
+            setLikeCount(previousCount);
+            toast.error("Action failed");
+        } else if (!previousLiked) {
+            // Optional: Notify user they earned XP
+            toast.success(`Liked! (+5 XP)`); 
+        }
+    };
   const handleShare = () => { navigator.clipboard.writeText(window.location.href); toast.success("Link copied!"); };
   const handlePostComment = async () => { /* Add comment logic */ };
 
@@ -186,7 +236,7 @@ export default function StoryDetail() {
     if (!isAdminView) return; 
     setFeedback(prev => {
         const next = { ...prev };
-        if (!comment) delete next[fieldId];
+        if (!comment || comment.trim() === "") delete next[fieldId];
         else next[fieldId] = comment;
         return next;
     });
@@ -245,7 +295,10 @@ export default function StoryDetail() {
   const CategoryIcon = categoryData && LucideIcons[categoryData.icon] ? LucideIcons[categoryData.icon] : null;
   const categoryColor = categoryData ? getColorHex(categoryData.color) : "#fff";
 
-  const hasIssues = Object.keys(feedback).length > 0; 
+  // ⚡ COUNT ACTIVE ISSUES
+  const issuesCount = Object.values(feedback).filter(val => val && val.trim() !== "").length;
+  const hasIssues = issuesCount > 0; 
+  const hasGeneralFeedback = feedback.general && feedback.general.trim() !== "";
 
   if (loading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">Loading Journey...</div>;
   if (!story) return null;
@@ -255,37 +308,58 @@ export default function StoryDetail() {
     <div className="bg-slate-50 dark:bg-[#0B0F19] min-h-screen pb-20 font-sans transition-colors duration-300">
       <Toaster position="bottom-center" />
       
-      {/* ⚡ NEON READING BAR */}
-      <motion.div className="fixed top-0 left-0 right-0 h-1.5 z-[100] bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 origin-left" style={{ scaleX }} />
+      <motion.div className="fixed top-0 left-0 right-0 h-1.5 z-[100] bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 origin-left shadow-[0_0_15px_rgba(236,72,153,0.7)]" style={{ scaleX }} />
 
-      {/* ⚡ FLOATING NAV CONTROLS */}
       <div className="fixed top-6 left-0 right-0 px-4 md:px-8 z-[90] flex justify-between items-center pointer-events-none">
-          <button onClick={() => navigate(-1)} className="pointer-events-auto p-3 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 text-white hover:scale-105 transition-all shadow-lg group"><ArrowLeft size={24}/></button>
+          <button onClick={() => navigate(-1)} className="pointer-events-auto p-3 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 text-white hover:bg-black/40 hover:scale-105 transition-all shadow-lg group">
+            <ArrowLeft size={24} className="group-hover:-translate-x-1 transition-transform"/>
+          </button>
           <div className="pointer-events-auto flex gap-3">
-            {isAdminView && <div className="px-4 py-2 bg-orange-600 text-white rounded-full font-bold shadow-lg flex items-center gap-2"><ShieldAlert size={16}/> Admin View</div>}
-            {isAuthorView && <div className="px-4 py-2 bg-red-600 text-white rounded-full font-bold shadow-lg flex items-center gap-2"><Edit3 size={16}/> Revision Mode</div>}
-            <button onClick={() => setIsDark(!isDark)} className="p-3 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 text-white hover:rotate-12 transition-all shadow-lg">{isDark ? <Sun size={24}/> : <Moon size={24} />}</button>
+            {isAdminView && <div className="px-4 py-2 bg-orange-600 text-white rounded-full font-bold shadow-lg shadow-orange-900/50 flex items-center gap-2 animate-pulse"><ShieldAlert size={16}/> Admin View</div>}
+            {isAuthorView && <div className="px-4 py-2 bg-red-600 text-white rounded-full font-bold shadow-lg shadow-red-900/50 flex items-center gap-2 animate-pulse"><Edit3 size={16}/> Revision Mode</div>}
+            <button onClick={() => setIsDark(!isDark)} className="p-3 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 text-white hover:rotate-12 transition-all shadow-lg">
+                {isDark ? <Sun size={24} className="text-yellow-400"/> : <Moon size={24} />}
+            </button>
           </div>
       </div>
 
       {isAuthorView && (
-          <div className="fixed top-20 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none">
-              <motion.div initial={{y:-50, opacity:0}} animate={{y:0, opacity:1}} className="pointer-events-auto bg-red-500/90 backdrop-blur-xl text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-white/10 max-w-lg">
-                  <AlertCircle size={24} className="shrink-0"/>
-                  <div className="text-sm"><p className="font-bold">Admin Requested Changes</p><p className="opacity-90">Please review flagged sections.</p></div>
-              </motion.div>
+          <div className="max-w-7xl mx-auto px-4 mt-24 mb-4">
+              <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
+                      <AlertTriangle size={24} className="text-red-500"/>
+                  </div>
+                  <div className="flex-1 text-center md:text-left">
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">Admin Requested Changes</h3>
+                      <p className="text-slate-600 dark:text-slate-300 text-sm">Please review the flagged sections below. Click "Edit & Fix Issues" to make corrections.</p>
+                  </div>
+                  <button onClick={handleEditRedirect} className="px-6 py-2 bg-red-600 text-white font-bold rounded-xl shadow-lg hover:bg-red-500 transition-all flex items-center gap-2"><Hammer size={16}/> Fix Now</button>
+              </div>
           </div>
       )}
 
-      {/* --- 🎥 HERO SECTION --- */}
+      {hasGeneralFeedback && (
+        <div className="max-w-7xl mx-auto px-4 mt-24 md:mt-28 mb-4">
+            <ReviewSection id="general" label="General Feedback" className="w-full">
+                <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-5 flex items-start gap-4 shadow-lg relative group/gen">
+                    <div className="p-2 bg-orange-500/20 rounded-lg text-orange-500 shrink-0"><Info size={20}/></div>
+                    <div><h4 className="font-bold text-orange-500 uppercase tracking-wider text-xs mb-1">General Feedback</h4><p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed">{feedback.general}</p></div>
+                </div>
+            </ReviewSection>
+        </div>
+      )}
+
       <div className="relative h-[65vh] lg:h-[95vh] w-full bg-slate-900 overflow-hidden group">
         <ReviewSection id="coverImage" label="Cover Image" className="w-full h-full absolute inset-0" flagPosition="top-24 right-4">
-            {story.coverImage ? (<motion.img initial={{ scale: 1.15 }} animate={{ scale: 1 }} src={story.coverImage} className="w-full h-full object-cover" />) : <div className="w-full h-full flex items-center justify-center text-white/20">No Cover</div>}
+            {story.coverImage ? (
+            <motion.img initial={{ scale: 1.15 }} animate={{ scale: 1 }} transition={{ duration: 2, ease: "easeOut" }} src={story.coverImage} alt={story.title} className="w-full h-full object-cover" />
+            ) : <div className="w-full h-full flex items-center justify-center text-white/20">No Cover</div>}
         </ReviewSection>
+        
         <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-[#0B0F19]/20 to-transparent pointer-events-none" />
+        
         <div className="absolute bottom-0 inset-0 z-20 left-0 w-full p-4 md:p-12 lg:p-20 pb-16 lg:pb-40 max-w-7xl mx-auto flex flex-col items-center justify-end h-full text-center pointer-events-none">
-            <ReviewSection id="title" label="Title & Meta" className="pointer-events-auto space-y-4 md:space-y-6">
-                {/* ⚡ WRAPPED LOCATION IN REVIEW SECTION */}
+            <ReviewSection id="title" label="Title & Meta" className="pointer-events-auto space-y-4 md:space-y-6 animate-in fade-in slide-in-from-bottom-12 duration-1000">
                 <ReviewSection id="location" label="Location" className="inline-block relative" flagPosition="-right-3 -top-3">
                     <div className="inline-flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white text-xs md:text-sm font-bold uppercase tracking-wider">
                         <MapPin size={12} md:size={14} className="text-orange-400"/> {story.location}
@@ -294,32 +368,49 @@ export default function StoryDetail() {
 
                 <h1 className="text-4xl md:text-7xl lg:text-8xl font-black text-white leading-[1.1] md:leading-[0.9] tracking-tight drop-shadow-2xl">{story.title}</h1>
                 
-                {/* ⚡ WRAPPED META DETAILS IN REVIEW SECTION */}
-                <ReviewSection id="meta" label="Trip Details" className="inline-block relative" flagPosition="-right-4 -top-4">
-                    <div className="flex flex-wrap items-center justify-center gap-4 md:gap-8 text-white/90 font-medium text-sm md:text-lg pt-2 md:pt-4">
+                <div className="flex flex-wrap items-center justify-center gap-4 md:gap-8 text-white/90 font-medium text-sm md:text-lg pt-2 md:pt-4">
+                    <ReviewSection id="month" label="Month" className="inline-block relative" flagPosition="-right-2 -top-4">
                         <div className="flex items-center gap-2.5"><Calendar size={16} md:size={20} className="text-orange-400"/> {story.month}</div>
-                        {categoryData && (<><div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/><div className="flex items-center gap-2 px-3 py-1 rounded-full border border-white/20 backdrop-blur-md" style={{ backgroundColor: `${categoryColor}20` }}>{CategoryIcon && <CategoryIcon size={16} style={{ color: categoryColor }} />}<span style={{ color: categoryColor }} className="font-bold text-sm">{categoryData.label}</span></div></>)}
-                        <div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/>
+                    </ReviewSection>
+
+                    {categoryData && (<ReviewSection id="category" label="Category" className="inline-block relative" flagPosition="-right-2 -top-4"><><div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/><div className="flex items-center gap-2 px-3 py-1 rounded-full border border-white/20 backdrop-blur-md" style={{ backgroundColor: `${categoryColor}20` }}>{CategoryIcon && <CategoryIcon size={16} style={{ color: categoryColor }} />}<span style={{ color: categoryColor }} className="font-bold text-sm">{categoryData.label}</span></div></></ReviewSection>)}
+                    
+                    <div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/>
+                    <ReviewSection id="tripType" label="Trip Type" className="inline-block relative" flagPosition="-right-2 -top-4">
                         <div className="flex items-center gap-2.5"><Flag size={16} md:size={20} className="text-emerald-400"/> {tripTypeData ? tripTypeData.label : story.tripType}</div>
-                        <div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/>
+                    </ReviewSection>
+
+                    <div className="w-1.5 h-1.5 rounded-full bg-white/30 hidden md:block"/>
+                    <ReviewSection id="difficulty" label="Difficulty" className="inline-block relative" flagPosition="-right-2 -top-4">
                         <div className="flex items-center gap-2.5"><Mountain size={16} md:size={20} className="text-rose-400"/> {difficultyData ? difficultyData.label : story.difficulty}</div>
-                    </div>
-                </ReviewSection>
+                    </ReviewSection>
+                </div>
             </ReviewSection>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-10 mt-0 lg:-mt-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
+            
             <div className="lg:col-span-4 space-y-6 md:space-y-8 h-fit lg:sticky lg:top-32 mt-0 lg:mt-32 order-1 lg:order-none">
-                <div className="bg-white dark:bg-[#151b2b] p-6 rounded-[2rem] shadow-2xl border border-slate-100 dark:border-white/5 relative overflow-hidden">
-                    <div className="flex items-center gap-4 mb-6"><div className="w-16 h-16 rounded-full p-1 bg-white dark:bg-[#151b2b] shadow-lg"><img src={authorProfile?.photoURL} className="w-full h-full rounded-full object-cover"/></div><div className="flex-1"><h3 className="text-xl font-black text-slate-900 dark:text-white">{story.authorName}</h3><div className="text-xs text-slate-400 mt-1">{trackersCount} Trackers</div></div></div>
-                    <div className="grid grid-cols-2 gap-4 mb-6">
-                        <div><div className="text-[10px] font-bold text-slate-400 uppercase">Duration</div><div className="text-3xl font-black text-slate-900 dark:text-white">{days.length} Days</div></div>
+                {/* AUTHOR CARD */}
+                <div className="bg-white dark:bg-[#151b2b] p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] shadow-2xl border border-slate-100 dark:border-white/5 relative transition-colors duration-300">
+                    <div className="flex items-center gap-4 md:gap-5 mb-6 md:mb-8">
+                        <div className="relative shrink-0"><div className="w-16 h-16 md:w-20 md:h-20 rounded-full p-1 bg-white dark:bg-[#151b2b] shadow-lg"><img src={authorProfile?.photoURL || `https://ui-avatars.com/api/?name=${story.authorName}`} className="w-full h-full rounded-full object-cover" alt="Author"/></div></div>
+                        <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-start">
+                                <div><div className="text-[10px] md:text-xs font-bold text-orange-500 tracking-widest uppercase mb-1">{authorProfile?.badge || "SCOUT"}</div><h3 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white leading-none truncate pr-2">{story.authorName}</h3></div>
+                                <button onClick={handleTrack} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all border shrink-0 ${isTracking ? "bg-transparent border-slate-300 dark:border-white/20 text-slate-500 dark:text-slate-400" : "bg-orange-500 border-orange-500 text-white hover:bg-orange-600 shadow-md hover:shadow-lg"}`}>{isTracking ? <>Tracking <Check size={12}/></> : <><Footprints size={12}/> Track +</>}</button>
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-1.5 font-medium flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${trackersCount > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}/>{trackersCount} Trackers on Radar</div>
+                        </div>
+                    </div>
+                    <div className="h-px bg-slate-100 dark:bg-white/5 w-full mb-6 md:mb-8" />
+                    <div className="grid grid-cols-2 gap-4 md:gap-8 mb-6 md:mb-8">
+                        <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Duration</div><div className="flex items-baseline gap-1"><span className="text-3xl md:text-4xl font-black text-slate-900 dark:text-white">{days.length}</span><span className="text-xs md:text-sm font-bold text-slate-400">Days</span></div></div>
                         
-                        {/* ⚡ WRAPPED COST IN REVIEW SECTION */}
                         <ReviewSection id="cost" label="Cost" className="block relative" flagPosition="right-0 -top-2">
-                            <div><div className="text-[10px] font-bold text-slate-400 uppercase">Cost</div><div className="text-3xl font-black text-slate-900 dark:text-white">₹{story.totalCost}</div></div>
+                            <div><div className="text-[10px] font-bold text-slate-400 uppercase">Cost</div><div className="text-3xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight">₹{story.totalCost || "0"}</div></div>
                         </ReviewSection>
                     </div>
                     <div className="flex gap-3 md:gap-4">
@@ -421,13 +512,36 @@ export default function StoryDetail() {
             <div className="flex items-center gap-4">
                 <div className={`px-4 py-2 rounded-xl border font-bold flex items-center gap-2 transition-all ${hasIssues ? (isResubmission ? 'bg-blue-500/10 border-blue-500/50 text-blue-500' : 'bg-orange-500/10 border-orange-500/50 text-orange-500 animate-pulse') : 'bg-slate-800 border-white/10 text-slate-400'}`}>
                     {hasIssues ? (isResubmission ? <SearchCheck size={18}/> : <AlertTriangle size={18}/>) : <Check size={18}/>}
-                    <span>{hasIssues ? (isResubmission ? "Review Fixes" : "Issues Flagged") : "No Issues Found"}</span>
+                    <span>{hasIssues ? `${issuesCount} Issue${issuesCount > 1 ? 's' : ''} Remaining` : "All Clear"}</span>
                 </div>
-                {hasIssues && <span className="text-xs text-slate-400 hidden md:inline">Authors will see your specific notes for each flag.</span>}
+                {/* ⚡ SMART CONTEXTUAL TEXT */}
+                {hasIssues && (
+                    <span className="text-xs text-slate-500 dark:text-slate-400 hidden md:inline">
+                        {isResubmission 
+                        ? "Reviewing author's updates. Clear flags if resolved." 
+                        : "Authors will see your specific notes for each flag."}
+                    </span>
+                )}
             </div>
             <div className="flex gap-3">
-                <button onClick={() => setConfirmAction('return')} disabled={!hasIssues || isSubmittingReview} className="px-6 py-3 rounded-xl font-bold border border-white/10 bg-slate-800 text-slate-300 hover:bg-slate-700">Request Changes</button>
-                <button onClick={() => setConfirmAction('approve')} disabled={hasIssues || isSubmittingReview} className="px-6 py-3 rounded-xl font-bold bg-green-600 hover:bg-green-500 text-white shadow-lg">Approve & Publish</button>
+                {/* ⚡ THEME SPECIFIC BUTTON */}
+                <button 
+                    onClick={() => setConfirmAction('return')} 
+                    disabled={!hasIssues || isSubmittingReview} 
+                    className={`px-6 py-3 rounded-xl font-bold border transition-all 
+                    ${!hasIssues || isSubmittingReview 
+                        ? 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800/50 dark:text-slate-600 dark:border-white/5 cursor-not-allowed' 
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:border-white/10 dark:hover:bg-slate-700 shadow-sm'}`}
+                >
+                    Request Changes
+                </button>
+                <button 
+                    onClick={() => setConfirmAction('approve')} 
+                    disabled={hasIssues || isSubmittingReview} 
+                    className="px-6 py-3 rounded-xl font-bold bg-green-600 hover:bg-green-500 text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    Approve & Publish
+                </button>
             </div>
         </motion.div>
       )}
@@ -487,8 +601,9 @@ const ReviewSection = ({ id, label, children, className, flagPosition = "-right-
                 // ADMIN VIEW: FLAGGING BUTTON
                 <button 
                     onClick={() => setIsOpen(!isOpen)} 
-                    className={`absolute ${flagPosition} z-50 p-2 rounded-full shadow-xl transition-all transform hover:scale-110 
-                    ${hasIssue ? flagColor : 'bg-white text-slate-400 border border-slate-200'}`} 
+                    // ⚡ Z-INDEX INCREASED TO 100 TO FIX CLIPPING
+                    className={`absolute ${flagPosition} z-[100] p-2 rounded-full shadow-xl transition-all transform hover:scale-110 
+                    ${hasIssue ? flagColor : 'bg-white text-slate-400 border border-slate-200'} cursor-pointer`} 
                     title={isResubmission ? "Verify Author's Fix" : "Flag Issue"}
                 >
                     {hasIssue ? flagIcon : <Flag size={16}/>}
@@ -497,7 +612,8 @@ const ReviewSection = ({ id, label, children, className, flagPosition = "-right-
                 // AUTHOR VIEW: UPDATED BADGE (Collapsed, Click to View)
                 <button 
                     onClick={() => setIsOpen(!isOpen)} 
-                    className={`absolute ${flagPosition} z-50 px-4 py-2 rounded-full shadow-xl bg-red-600 text-white text-xs font-bold flex items-center gap-2 animate-bounce cursor-pointer hover:bg-red-700 transition-colors`} 
+                    // ⚡ Z-INDEX INCREASED TO 100 TO FIX CLIPPING
+                    className={`absolute ${flagPosition} z-[100] px-4 py-2 rounded-full shadow-xl bg-red-600 text-white text-xs font-bold flex items-center gap-2 animate-bounce cursor-pointer hover:bg-red-700 transition-colors`} 
                 >
                     <AlertTriangle size={14} fill="currentColor"/>
                     <span>Action Required (Click to View)</span>
@@ -506,7 +622,7 @@ const ReviewSection = ({ id, label, children, className, flagPosition = "-right-
 
             <AnimatePresence>
                 {isOpen && (
-                    <motion.div initial={{ opacity: 0, scale: 0.9, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 10 }} className="absolute right-0 top-8 z-50 w-72 bg-[#1A1F2E] border border-white/10 rounded-xl shadow-2xl p-4">
+                    <motion.div initial={{ opacity: 0, scale: 0.9, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 10 }} className="absolute right-0 top-8 z-[100] w-72 bg-[#1A1F2E] border border-white/10 rounded-xl shadow-2xl p-4">
                         <div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-slate-400 uppercase">{isResubmission ? "Verify Modification" : `Issue with ${label}`}</span><button onClick={() => setIsOpen(false)}><X size={14} className="text-slate-500"/></button></div>
                         <textarea 
                             className={`w-full h-24 bg-black/20 border border-white/10 rounded-lg p-2 text-sm text-white focus:outline-none focus:border-red-500 resize-none mb-3 ${!isAdminView ? 'cursor-not-allowed opacity-80' : ''}`} 
@@ -520,7 +636,7 @@ const ReviewSection = ({ id, label, children, className, flagPosition = "-right-
                             {isAdminView ? (
                                 <>
                                     {hasIssue && (<button onClick={() => { toggleFeedback(id, null); setComment(""); setIsOpen(false); }} className="flex-1 py-2 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-500 flex items-center justify-center gap-1"><Check size={12}/> Resolve</button>)}
-                                    <button onClick={() => { if(!comment.trim()) return toast.error("Write comment"); toggleFeedback(id, comment); setIsOpen(false); toast.success("Flagged!"); }} className={`flex-1 py-2 rounded-lg text-white text-xs font-bold ${isResubmission ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500'}`}>{hasIssue ? "Update Note" : "Flag Issue"}</button>
+                                    <button onClick={() => { if(!comment.trim()) return toast.error("Please write a comment"); toggleFeedback(id, comment); setIsOpen(false); toast.success("Flagged!"); }} className={`flex-1 py-2 rounded-lg text-white text-xs font-bold ${isResubmission ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500'}`}>{hasIssue ? "Update Note" : "Flag Issue"}</button>
                                 </>
                             ) : (
                                 <button onClick={() => setIsOpen(false)} className="w-full py-2 rounded-lg bg-slate-700 text-white text-xs font-bold hover:bg-slate-600">Close</button>

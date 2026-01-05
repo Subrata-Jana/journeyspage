@@ -17,7 +17,8 @@ import {
   updateDoc,
   deleteDoc,
   query,
-  orderBy
+  orderBy,
+  increment // ⚡ IMPORTED INCREMENT
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import imageCompression from 'browser-image-compression';
@@ -25,6 +26,8 @@ import imageCompression from 'browser-image-compression';
 import { db, storage } from "../services/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useMetaOptions } from "../hooks/useMetaOptions";
+import { sendNotification } from "../services/notificationService";
+import LocationPicker from "../components/ui/LocationPicker";
 
 // --- HELPER: Get Color Hex from Name ---
 const getColorHex = (name) => {
@@ -76,7 +79,7 @@ export default function CreateStory() {
   const [feedback, setFeedback] = useState({}); 
 
   const isReturned = storyStatus === "returned";
-   
+    
   // ⚡ HELPER: Mark a field as "Modified" by the user
   const trackChange = (field) => {
       if (isReturned && feedback[field]) {
@@ -85,7 +88,6 @@ export default function CreateStory() {
   };
 
   // ⚡ SMART LOCK: Only allow editing flagged fields if returned
-  // Mapped to match Admin Flag IDs: 'title', 'location', 'meta', 'cost', 'aboutPlace', 'specialNote', etc.
   const isFieldLocked = (fieldName) => {
     if (storyStatus === "draft") return false;
     if (storyStatus === "pending" || storyStatus === "approved") return true;
@@ -98,7 +100,10 @@ export default function CreateStory() {
   };
 
   const [trip, setTrip] = useState({
-    title: "", location: "", month: "", totalCost: "",
+    title: "", 
+    location: "", 
+    locationData: null, // Added for LocationPicker
+    month: "", totalCost: "",
     tripType: "", difficulty: "", category: "",
     aboutPlace: "", specialNote: "",
     enableYoutube: false, youtubeLink: "",
@@ -156,7 +161,10 @@ export default function CreateStory() {
         });
 
         setTrip({
-          title: data.title || "", location: data.location || "", month: data.month || "", totalCost: data.totalCost || "",
+          title: data.title || "", 
+          location: data.location || "",
+          locationData: data.locationData || null, // Load location data
+          month: data.month || "", totalCost: data.totalCost || "",
           tripType: data.tripType || "", difficulty: data.difficulty || "", category: data.category || "",
           aboutPlace: data.aboutPlace || "", specialNote: data.specialNote || "",
           youtubeLink: data.youtubeLink || "", enableYoutube: !!data.youtubeLink,
@@ -197,7 +205,7 @@ export default function CreateStory() {
   };
 
   const handleDateChange = (e) => {
-    trackChange('meta'); // Matches Admin 'meta' flag
+    trackChange('month'); // Matches Admin 'meta' flag
     const val = e.target.value;
     if (!val) return setTrip({ ...trip, month: "" });
     const [year, month] = val.split("-");
@@ -212,6 +220,23 @@ export default function CreateStory() {
     const monthIndex = monthNames.indexOf(mon);
     if (monthIndex === -1) return "";
     return `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+  };
+
+  // ⚡ HANDLER: Location Picker
+  const handleLocationSelect = (selectedOption) => {
+    trackChange('location'); // Track modification
+    
+    // selectedOption is null if user clears the input
+    if (!selectedOption) {
+        setTrip(prev => ({ ...prev, location: "", locationData: null }));
+        return;
+    }
+    
+    setTrip(prev => ({
+        ...prev,
+        location: selectedOption.label.split(",")[0], // Just the city name for display (e.g. "Sandakphu")
+        locationData: selectedOption // Save full data for stats
+    }));
   };
 
   const handleCoverImageChange = async (file) => {
@@ -348,7 +373,10 @@ export default function CreateStory() {
       }
 
       const updatePayload = {
-        title: trip.title, location: trip.location, month: trip.month, totalCost: trip.totalCost,
+        title: trip.title, 
+        location: trip.location, 
+        locationData: trip.locationData || null, // Save Location Data
+        month: trip.month, totalCost: trip.totalCost,
         tripType: trip.tripType, difficulty: trip.difficulty, category: trip.category,
         aboutPlace: trip.aboutPlace, specialNote: trip.specialNote,
         youtubeLink: trip.enableYoutube ? trip.youtubeLink : "",
@@ -357,15 +385,35 @@ export default function CreateStory() {
         status: targetStatus,
         coverImage: coverUrl, coverImageCaption: trip.coverImageCaption || "",
         gallery: finalGallery, updatedAt: serverTimestamp(),
-        modifiedFlags: modifiedFields // ⚡ Save Amber States
+        modifiedFlags: modifiedFields 
       };
 
+      // ⚡ TRACK REVISIONS AUTOMATICALLY
+      if (publish || isReturned) {
+          updatePayload.revisionCount = increment(1);
+      }
+
+      // 1. Update the Main Story Document
       await updateDoc(doc(db, "stories", activeId), updatePayload);
 
+      // ⚡ ADDED: NOTIFICATION LOGIC
+      // If this is a publish action or a resubmission (isReturned), notify Admin
+      if (publish || isReturned) {
+          await sendNotification({
+              recipientId: 'admin', // Send to Admin Dashboard
+              type: 'info',
+              title: 'Story Revision Submitted',
+              message: `${userProfile?.name || 'An author'} has updated "${trip.title}". Revision #${(trip.revisionCount || 0) + 1}.`,
+              link: `/admin` // Or specific review link
+          });
+      }
+
+      // 2. Wipe and Replace "Days" Sub-collection
       const oldDays = await getDocs(collection(db, "stories", activeId, "days"));
       const deletePromises = oldDays.docs.map(d => deleteDoc(d.ref));
       await Promise.all(deletePromises);
 
+      // 3. Add New Days
       for (let i = 0; i < trip.days.length; i++) {
         let dayImg = trip.days[i].imagePreview; 
         if (trip.days[i].imageFile) {
@@ -431,6 +479,7 @@ export default function CreateStory() {
           <button onClick={() => navigate("/dashboard")} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-sm font-medium">Cancel</button>
         </div>
 
+        {/* 🛑 STATIC REVISION BANNER */}
         {isReturned && (
             <div className="mb-8 bg-red-500/10 border border-red-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-4">
                 <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
@@ -453,19 +502,33 @@ export default function CreateStory() {
               <span className="w-1 h-6 bg-orange-500 rounded-full" /> Trip Essentials
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* ⚡ UPDATED KEY MAPPING TO MATCH ADMIN IDS ⚡ */}
               <InputGroup label="Story Title" value={trip.title} disabled={isFieldLocked('title')} onChange={e => {setTrip({ ...trip, title: e.target.value }); trackChange('title');}} placeholder="e.g. Lost in Ladakh" feedback={feedback['title']} isModified={modifiedFields['title']} />
-              <InputGroup label="Location" value={trip.location} disabled={isFieldLocked('location')} onChange={e => {setTrip({ ...trip, location: e.target.value }); trackChange('location');}} placeholder="e.g. Leh, India" feedback={feedback['location']} isModified={modifiedFields['location']} />
               
-              {/* Note: Admin flags 'meta' for Month/Type/Diff. User checks 'meta'. */}
-              <InputGroup label="Journey Month" value={getInputValueFromMonth(trip.month)} onChange={handleDateChange} disabled={isFieldLocked('meta')} type="month" feedback={feedback['meta']} isModified={modifiedFields['meta']} />
+              {/* ⚡ REPLACED: NEW LOCATION PICKER with Feedback Wrapper */}
+              <div className="space-y-1">
+                <div className="flex justify-between">
+                    <label className="text-xs font-medium text-slate-500 dark:text-slate-400 ml-1">Location</label>
+                </div>
+                <LocationPicker 
+                    value={trip.locationData} 
+                    onChange={handleLocationSelect}
+                    disabled={isFieldLocked('location')}
+                />
+                {/* ⚡ SMART FEEDBACK MESSAGE FOR LOCATION */}
+                {feedback['location'] && (
+                    <div className={`text-xs p-2 rounded-lg border flex items-start gap-2 mt-1 ${modifiedFields['location'] ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/10 dark:text-amber-400 dark:border-amber-500/20' : 'bg-red-50 text-red-600 border-red-100 dark:bg-red-900/10 dark:text-red-400 dark:border-red-500/20'}`}>
+                        {modifiedFields['location'] ? <CheckCircle2 size={14} className="mt-0.5 shrink-0"/> : <AlertCircle size={14} className="mt-0.5 shrink-0"/>}
+                        <span><span className="font-bold">{modifiedFields['location'] ? 'Change Detected:' : 'Correction Needed:'}</span> {modifiedFields['location'] ? 'Save to submit this fix.' : feedback['location']}</span>
+                    </div>
+                )}
+              </div>
               
-              {/* Note: Admin flags 'cost'. User checks 'cost'. */}
+              <InputGroup label="Journey Month" value={getInputValueFromMonth(trip.month)} onChange={handleDateChange} disabled={isFieldLocked('month')} type="month" feedback={feedback['month']} isModified={modifiedFields['month']} />
               <InputGroup label="Total Cost (₹)" value={trip.totalCost} onChange={e => {setTrip({ ...trip, totalCost: e.target.value }); trackChange('cost');}} disabled={isFieldLocked('cost')} placeholder="e.g. 15000" type="number" feedback={feedback['cost']} isModified={modifiedFields['cost']} />
               
-              <CustomSelect label="Trip Type" value={trip.tripType} onChange={(val) => {setTrip({ ...trip, tripType: val }); trackChange('meta');}} options={tripTypes} disabled={isFieldLocked('meta')} placeholder="Select Type..." feedback={feedback['meta']} isModified={modifiedFields['meta']} />
-              <CustomSelect label="Difficulty" value={trip.difficulty} onChange={(val) => {setTrip({ ...trip, difficulty: val }); trackChange('meta');}} options={difficulties} disabled={isFieldLocked('meta')} placeholder="Select Level..." feedback={feedback['meta']} isModified={modifiedFields['meta']} />
-              <CustomSelect label="Category" value={trip.category} onChange={(val) => {setTrip({ ...trip, category: val }); trackChange('meta');}} options={categories} disabled={isFieldLocked('meta')} placeholder="Select Category..." feedback={feedback['meta']} isModified={modifiedFields['meta']} />
+              <CustomSelect label="Trip Type" value={trip.tripType} onChange={(val) => {setTrip({ ...trip, tripType: val }); trackChange('tripType');}} options={tripTypes} disabled={isFieldLocked('tripType')} placeholder="Select Type..." feedback={feedback['tripType']} isModified={modifiedFields['tripType']} />
+              <CustomSelect label="Difficulty" value={trip.difficulty} onChange={(val) => {setTrip({ ...trip, difficulty: val }); trackChange('difficulty');}} options={difficulties} disabled={isFieldLocked('difficulty')} placeholder="Select Level..." feedback={feedback['difficulty']} isModified={modifiedFields['difficulty']} />
+              <CustomSelect label="Category" value={trip.category} onChange={(val) => {setTrip({ ...trip, category: val }); trackChange('category');}} options={categories} disabled={isFieldLocked('category')} placeholder="Select Category..." feedback={feedback['category']} isModified={modifiedFields['category']} />
             </div>
           </div>
 

@@ -7,10 +7,15 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { 
   Camera, MapPin, Award, Edit2, Globe, BookOpen, Heart, 
   Share2, Shield, Save, User, Link as LinkIcon, ArrowLeft,
-  Facebook, Instagram, Youtube, Twitter, Gem
+  Facebook, Instagram, Youtube, Twitter, Gem, Lock
 } from "lucide-react";
 import { motion } from "framer-motion";
 import toast, { Toaster } from 'react-hot-toast';
+
+// ⚡ PREMIUM IMPORTS
+import { useGamification, RenderIcon } from "../hooks/useGamification";
+import LevelBadge from "../components/premium/LevelBadge";
+import LevelProgress from "../components/premium/LevelProgress";
 
 export default function Profile() {
   const { user } = useAuth();
@@ -29,11 +34,17 @@ export default function Profile() {
     facebook: "",
     instagram: "",
     youtube: "",
-    twitter: ""
+    twitter: "",
+    xp: 0,
+    badges: [],
+    inventory: [] 
   });
 
   // Stats
   const [stats, setStats] = useState({ stories: 0, likes: 0, views: 0, countries: 0 });
+
+  // ⚡ INIT GAMIFICATION HOOK
+  const { currentRank, badges, loot, loading: gameLoading } = useGamification(profileData.xp, profileData.badges, profileData.inventory);
 
   // Load Data
   useEffect(() => {
@@ -55,7 +66,10 @@ export default function Profile() {
             facebook: data.facebook || "",
             instagram: data.instagram || "",
             youtube: data.youtube || "",
-            twitter: data.twitter || ""
+            twitter: data.twitter || "",
+            xp: data.xp || 0,
+            badges: data.badges || [],
+            inventory: data.inventory || []
           });
         } else {
             setProfileData(prev => ({
@@ -125,8 +139,7 @@ export default function Profile() {
     }
   };
 
-  if (loading) return <div className="min-h-screen bg-[#0B0F19] text-white flex items-center justify-center">Loading Profile...</div>;
-  const explorerLevel = Math.max(1, Math.floor(stats.stories / 2) + 1);
+  if (loading || gameLoading) return <div className="min-h-screen bg-[#0B0F19] text-white flex items-center justify-center">Loading Passport...</div>;
 
   return (
     <div className="min-h-screen bg-[#0B0F19] text-white font-sans pb-20">
@@ -149,15 +162,21 @@ export default function Profile() {
 
       <div className="max-w-5xl mx-auto px-6 -mt-24 relative z-10">
         
-        {/* IDENTITY CARD */}
+        {/* PASSPORT HEADER */}
         <div className="flex flex-col md:flex-row gap-8 items-end md:items-start mb-12">
           
-          {/* Avatar */}
+          {/* Avatar & Rank */}
           <div className="relative group shrink-0">
-            <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-1 bg-gradient-to-tr from-orange-500 to-purple-600 shadow-2xl relative z-10">
+            <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-1.5 bg-gradient-to-tr from-orange-500 to-purple-600 shadow-2xl relative z-10">
               <img src={profileData.photoURL || `https://ui-avatars.com/api/?name=${profileData.name}`} alt="Profile" className="w-full h-full rounded-full object-cover bg-slate-800 border-4 border-[#0B0F19]" />
             </div>
-            <label className="absolute bottom-2 right-2 bg-orange-600 text-white p-2 rounded-full cursor-pointer shadow-lg hover:scale-110 transition-transform z-20 border border-black">
+            
+            {/* ⚡ DYNAMIC RANK BADGE */}
+            <div className="absolute bottom-2 -right-2 z-20">
+                <LevelBadge rank={currentRank} size="lg" />
+            </div>
+
+            <label className="absolute bottom-2 left-2 bg-orange-600 text-white p-2 rounded-full cursor-pointer shadow-lg hover:scale-110 transition-transform z-20 border border-black">
               <Camera size={16} />
               <input type="file" hidden accept="image/*" onChange={(e) => handleImageUpload(e, 'photoURL')} />
             </label>
@@ -179,10 +198,6 @@ export default function Profile() {
                 )}
                 
                 <div className="flex flex-wrap items-center gap-4 text-slate-400 mt-3 text-sm">
-                  <div className="flex items-center gap-1.5 text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded-full border border-orange-500/20">
-                    <Shield size={12} fill="currentColor" /> 
-                    <span className="uppercase tracking-wider font-bold text-[10px]">Lvl {explorerLevel}</span>
-                  </div>
                   <div className="flex items-center gap-1">
                     <MapPin size={14} /> 
                     {isEditing ? (
@@ -196,6 +211,12 @@ export default function Profile() {
                     ) : (<a href={profileData.website} target="_blank" rel="noreferrer" className="hover:text-orange-400 truncate max-w-[150px]">{profileData.website || "No website"}</a>)}
                   </div>
                 </div>
+
+                {/* ⚡ DYNAMIC LEVEL PROGRESS */}
+                <div className="max-w-md">
+                    <LevelProgress currentXP={profileData.xp} rankData={currentRank} />
+                </div>
+
               </div>
 
               {/* Action Buttons */}
@@ -215,8 +236,8 @@ export default function Profile() {
               <p className="text-lg text-slate-300 max-w-2xl leading-relaxed">{profileData.bio}</p>
             )}
 
-            {/* SOCIAL LINKS - EDIT MODE */}
-            {isEditing && (
+            {/* SOCIAL LINKS */}
+            {isEditing ? (
                 <div className="bg-white/5 border border-white/5 rounded-xl p-4 mt-4 animate-in fade-in slide-in-from-top-2">
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Social Links</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -226,10 +247,7 @@ export default function Profile() {
                         <SocialInput icon={<Twitter size={16}/>} value={profileData.twitter} onChange={e => setProfileData({...profileData, twitter: e.target.value})} placeholder="X (Twitter) URL" />
                     </div>
                 </div>
-            )}
-
-            {/* SOCIAL LINKS - VIEW MODE */}
-            {!isEditing && (
+            ) : (
                 <div className="flex gap-3 pt-2">
                     {profileData.facebook && <SocialIcon icon={<Facebook size={20}/>} link={profileData.facebook} color="hover:text-blue-500" />}
                     {profileData.instagram && <SocialIcon icon={<Instagram size={20}/>} link={profileData.instagram} color="hover:text-pink-500" />}
@@ -248,29 +266,38 @@ export default function Profile() {
           <StatBox label="Total Views" value={stats.views} icon={<Share2 className="text-purple-400" />} />
         </div>
 
-        {/* ACHIEVEMENTS & TREASURES */}
+        {/* ⚡ DYNAMIC ACHIEVEMENTS & TREASURES */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-6">
                 <h2 className="text-xl font-bold flex items-center gap-2 text-white"><Award className="text-yellow-500" /> Achievements</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <BadgeCard title="Early Adopter" desc="Joined in 2025" active={true} icon="🚀" />
-                    <BadgeCard title="Storyteller" desc="Published 1st Story" active={stats.stories > 0} icon="✍️" />
-                    <BadgeCard title="Globetrotter" desc="Visited 5+ Places" active={stats.countries >= 5} icon="🌍" />
-                    <BadgeCard title="Influencer" desc="100+ Total Views" active={stats.views >= 100} icon="🔥" />
-                    <BadgeCard title="Photographer" desc="Uploaded 10 Photos" active={false} icon="📸" />
-                    <BadgeCard title="Mountaineer" desc="Trek Category" active={false} icon="🏔️" />
+                    {badges.map(badge => (
+                        <div key={badge.id} className={`p-4 rounded-xl border flex flex-col items-center text-center transition-all hover:scale-105 select-none ${badge.isUnlocked ? 'bg-gradient-to-br from-orange-500/10 to-purple-500/10 border-orange-500/30 shadow-lg shadow-orange-500/5' : 'bg-white/5 border-white/5 opacity-40 grayscale'}`}>
+                            <div className="text-orange-400 mb-2 p-2 bg-white/5 rounded-lg"><RenderIcon iconName={badge.icon} size={24}/></div>
+                            <div className="font-bold text-sm text-white mb-1">{badge.name}</div>
+                            <div className="text-[10px] text-slate-400">{badge.description}</div>
+                        </div>
+                    ))}
+                    {badges.length === 0 && <p className="text-slate-500 text-sm italic">No badges configured.</p>}
                 </div>
             </div>
+            
             <div className="space-y-6">
-                <h2 className="text-xl font-bold flex items-center gap-2 text-white"><Gem className="text-purple-500" /> Hidden Treasures</h2>
+                <h2 className="text-xl font-bold flex items-center gap-2 text-white"><Gem className="text-purple-500" /> Artifact Collection</h2>
                 <div className="bg-[#111625]/60 border border-white/5 rounded-2xl p-6 relative overflow-hidden group">
                     <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-transparent opacity-50" />
                     <div className="grid grid-cols-3 gap-3 relative z-10">
-                        {[1,2,3,4,5,6,7,8,9].map(i => (
-                            <div key={i} className="aspect-square bg-black/40 rounded-lg border border-white/5 flex items-center justify-center text-white/10 hover:border-purple-500/30 transition-colors"><Gem size={20} /></div>
+                        {loot.map(item => (
+                            <div key={item.id} title={item.isUnlocked ? item.name : "Locked"} className={`aspect-square rounded-lg border flex flex-col items-center justify-center transition-colors ${item.isUnlocked ? 'bg-purple-500/20 border-purple-500/50 text-purple-300' : 'bg-black/40 border-white/5 text-white/10'}`}>
+                                <RenderIcon iconName={item.icon} size={20} />
+                                {item.isUnlocked && <span className="text-[8px] mt-1 font-bold truncate max-w-full px-1">{item.name}</span>}
+                            </div>
                         ))}
+                        {loot.length === 0 && <p className="text-slate-500 text-xs col-span-3 text-center">No artifacts discovered yet.</p>}
                     </div>
-                    <div className="mt-4 text-center"><p className="text-sm font-medium text-white">Collection Locked</p><p className="text-xs text-slate-500">Discover hidden items in your journeys to unlock.</p></div>
+                    {loot.every(l => !l.isUnlocked) && (
+                        <div className="mt-4 text-center"><p className="text-sm font-medium text-white">Collection Locked</p><p className="text-xs text-slate-500">Discover hidden items in stories to unlock.</p></div>
+                    )}
                 </div>
             </div>
         </div>
@@ -288,16 +315,6 @@ function StatBox({ label, value, icon }) {
       <div className="text-3xl font-bold text-white mb-1">{value}</div>
       <div className="text-xs text-slate-500 uppercase tracking-wider font-bold">{label}</div>
     </motion.div>
-  );
-}
-
-function BadgeCard({ title, desc, active, icon }) {
-  return (
-    <div className={`p-4 rounded-xl border flex flex-col items-center text-center transition-all hover:scale-105 select-none ${active ? 'bg-gradient-to-br from-orange-500/10 to-purple-500/10 border-orange-500/30 shadow-lg shadow-orange-500/5' : 'bg-white/5 border-white/5 opacity-40 grayscale'}`}>
-      <div className="text-3xl mb-2">{icon}</div>
-      <div className="font-bold text-sm text-white mb-1">{title}</div>
-      <div className="text-[10px] text-slate-400">{desc}</div>
-    </div>
   );
 }
 

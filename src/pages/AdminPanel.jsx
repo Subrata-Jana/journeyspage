@@ -11,10 +11,12 @@ import {
   Award, List, Gem, Edit2, Trash2, Save, 
   Plus, Search, X, Gift, LogOut, Sun, Moon, User, 
   CheckCircle, RotateCcw, Eye, Clock, Image as ImageIcon, UploadCloud, Menu,
-  AlertCircle, ArrowUp, ArrowDown, Filter
+  AlertCircle, ArrowUp, ArrowDown, Filter, History
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import * as LucideIcons from "lucide-react"; 
+import { formatDistanceToNow } from 'date-fns';
+import { sendNotification } from "../services/notificationService";
 
 // --- CONSTANTS ---
 const SCROLLBAR_STYLES = `
@@ -186,7 +188,7 @@ function StoryModeration({ isDark }) {
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState("pending");
     const [searchQuery, setSearchQuery] = useState("");
-    const [sortOrder, setSortOrder] = useState("desc"); // 'desc' | 'asc'
+    const [sortOrder, setSortOrder] = useState("desc"); 
     const navigate = useNavigate();
 
     // ⚡ STATE FOR RETURN MODAL
@@ -198,13 +200,11 @@ function StoryModeration({ isDark }) {
     useEffect(() => {
         async function fetchStories() {
             try {
-                // ⚡ SORT BY DATE TO ENABLE TRACEABILITY
-                const q = query(collection(db, "stories"), orderBy("createdAt", sortOrder));
+                const q = query(collection(db, "stories"), orderBy("updatedAt", sortOrder));
                 const snap = await getDocs(q);
                 const fetched = snap.docs.map((d) => ({ 
                     id: d.id, 
                     ...d.data(),
-                    // Normalize status for UI
                     status: d.data().status || (d.data().published ? 'pending' : 'draft') 
                 }));
                 setAllStories(fetched);
@@ -216,7 +216,7 @@ function StoryModeration({ isDark }) {
             }
         }
         fetchStories();
-    }, [sortOrder]); // Re-fetch when sort order changes
+    }, [sortOrder]); 
 
     // ⚡ FILTER & SEARCH LOGIC
     const filteredStories = useMemo(() => {
@@ -292,6 +292,14 @@ function StoryModeration({ isDark }) {
                 feedback: finalFeedback
             });
 
+            await sendNotification({
+                recipientId: storyToReturn.authorId, // Send to the Author
+                type: 'alert',
+                title: 'Action Required: Story Returned',
+                message: `Admin has requested changes on "${storyToReturn.title}". Reason: ${note || "See flagged items."}`,
+                link: `/create-story?edit=${storyToReturn.id}` // Link directly to fix page
+            });
+
             setAllStories(prev => prev.map(s => s.id === storyToReturn.id ? { 
                 ...s, status: "returned", published: false, adminNotes: note, feedback: finalFeedback
             } : s));
@@ -321,6 +329,14 @@ function StoryModeration({ isDark }) {
 
     const cardClass = isDark ? "bg-[#111625] border-white/5" : "bg-white border-slate-200 shadow-sm";
     const issueCount = storyToReturn ? Object.keys(storyToReturn.feedback || {}).length : 0;
+
+    // Helper for formatting time
+    const formatTimeAgo = (timestamp) => {
+        if (!timestamp) return "N/A";
+        try {
+            return formatDistanceToNow(new Date(timestamp.seconds * 1000), { addSuffix: true });
+        } catch (e) { return "Unknown"; }
+    };
 
     return (
         <div className="space-y-6 animate-in slide-in-from-right duration-500 pb-20">
@@ -363,7 +379,7 @@ function StoryModeration({ isDark }) {
                         title={sortOrder === 'desc' ? "Newest First" : "Oldest First"}
                     >
                         {sortOrder === 'desc' ? <ArrowDown size={16}/> : <ArrowUp size={16}/>}
-                        <span className="hidden md:inline">Date</span>
+                        <span className="hidden md:inline">Sort</span>
                     </button>
                 </div>
             </div>
@@ -380,10 +396,10 @@ function StoryModeration({ isDark }) {
                 <table className="w-full text-left">
                     <thead className={`text-xs uppercase font-bold ${isDark ? 'bg-white/5 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
                         <tr>
-                            <th className="p-4">Story</th>
+                            <th className="p-4">Story & Revisions</th>
                             <th className="p-4">Author</th>
-                            <th className="p-4">Submitted</th> {/* ⚡ NEW COLUMN */}
-                            <th className="p-4">Status</th>
+                            <th className="p-4">Timeline</th> {/* ⚡ UPGRADED COLUMN */}
+                            <th className="p-4">Status & Aging</th> {/* ⚡ UPGRADED COLUMN */}
                             <th className="p-4 text-right">Actions</th>
                         </tr>
                     </thead>
@@ -399,7 +415,15 @@ function StoryModeration({ isDark }) {
                                             {story.coverImage ? <img src={story.coverImage} className="w-full h-full object-cover" alt=""/> : <div className="w-full h-full flex items-center justify-center text-slate-500"><ImageIcon size={16}/></div>}
                                         </div>
                                         <div>
-                                            <div className={`font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{story.title || "Untitled"}</div>
+                                            <div className="flex items-center gap-2">
+                                                <div className={`font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{story.title || "Untitled"}</div>
+                                                {/* ⚡ REVISION BADGE */}
+                                                {story.revisionCount > 0 && (
+                                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-white flex items-center gap-1" title="Revision Count">
+                                                        <History size={10}/> v{story.revisionCount}
+                                                    </span>
+                                                )}
+                                            </div>
                                             <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                                                 <MapPin size={10}/> {story.location || "Unknown"}
                                             </div>
@@ -409,31 +433,47 @@ function StoryModeration({ isDark }) {
                                 <td className={`p-4 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                                     <div className="flex items-center gap-2">
                                         <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-white font-bold overflow-hidden">
-                                            {/* You could add author avatar logic here later */}
                                             {story.authorName?.[0] || <User size={12}/>}
                                         </div>
                                         {story.authorName || "Unknown"}
                                     </div>
                                 </td>
-                                {/* ⚡ TRACEABLE DATE COLUMN */}
-                                <td className={`p-4 text-xs font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                                    {story.createdAt?.seconds ? new Date(story.createdAt.seconds * 1000).toLocaleDateString() : "N/A"}
-                                    <br/>
-                                    {story.createdAt?.seconds && new Date(story.createdAt.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                </td>
+                                
+                                {/* ⚡ TIMELINE COLUMN */}
                                 <td className="p-4">
-                                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide inline-flex items-center gap-1.5
-                                        ${story.status === 'approved' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
-                                          story.status === 'returned' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 
-                                          story.published ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
-                                          'bg-slate-500/10 text-slate-500 border border-slate-500/20'}
-                                    `}>
-                                        {story.status === 'approved' && <CheckCircle size={12}/>}
-                                        {story.status === 'returned' && <RotateCcw size={12}/>}
-                                        {story.published && story.status !== 'approved' && story.status !== 'returned' && <Clock size={12}/>}
-                                        {story.status || (story.published ? "Pending" : "Draft")}
-                                    </span>
+                                    <div className="flex flex-col gap-1">
+                                        <div className="text-xs font-medium text-emerald-500 flex items-center gap-1" title="Last Updated">
+                                            <ArrowUp size={10}/> Last: {story.updatedAt?.seconds ? new Date(story.updatedAt.seconds * 1000).toLocaleDateString() : "N/A"}
+                                        </div>
+                                        <div className="text-[10px] text-slate-500 flex items-center gap-1" title="First Submitted">
+                                            <ArrowDown size={10}/> First: {story.createdAt?.seconds ? new Date(story.createdAt.seconds * 1000).toLocaleDateString() : "N/A"}
+                                        </div>
+                                    </div>
                                 </td>
+
+                                {/* ⚡ STATUS & AGING COLUMN */}
+                                <td className="p-4">
+                                    <div className="flex flex-col items-start gap-1">
+                                        <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide inline-flex items-center gap-1.5
+                                            ${story.status === 'approved' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
+                                              story.status === 'returned' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 
+                                              story.published ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
+                                              'bg-slate-500/10 text-slate-500 border border-slate-500/20'}
+                                        `}>
+                                            {story.status === 'approved' && <CheckCircle size={12}/>}
+                                            {story.status === 'returned' && <RotateCcw size={12}/>}
+                                            {story.published && story.status !== 'approved' && story.status !== 'returned' && <Clock size={12}/>}
+                                            {story.status || (story.published ? "Pending" : "Draft")}
+                                        </span>
+                                        {/* ⚡ PENDENCY CLOCK */}
+                                        {story.published && story.status !== 'approved' && story.status !== 'returned' && (
+                                            <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1 ml-1">
+                                                ⏳ Waited: {formatTimeAgo(story.updatedAt)}
+                                            </span>
+                                        )}
+                                    </div>
+                                </td>
+
                                 <td className="p-4 text-right">
                                     <div className="flex justify-end gap-2">
                                         <button 

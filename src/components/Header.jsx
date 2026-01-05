@@ -9,11 +9,16 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../services/firebase"; 
 import { useAuth } from "../contexts/AuthContext";
 import Modal from "./ui/Modal";
-import toast from "react-hot-toast"; 
+import toast from "react-hot-toast";
+// ⚡ IMPORT NOTIFICATION BELL
+import NotificationBell from "./NotificationBell"; 
 
 export default function Header() {
   const { user, userProfile, logout } = useAuth();
   const navigate = useNavigate();
+
+  // ⚡ DEFINE ADMIN STATUS
+  const isAdmin = userProfile?.role === 'admin';
 
   // --- 1. DARK MODE ---
   const [dark, setDark] = useState(() => {
@@ -73,10 +78,10 @@ export default function Header() {
     ? "text-slate-900 dark:text-white transition-all" 
     : "text-white [text-shadow:_0_2px_4px_rgb(0_0_0_/_50%),_0_10px_20px_rgb(0_0_0_/_30%)] transition-all"; 
 
-  // Subtitle Color (PAGE) - Needs to be visible on both white and dark/image backgrounds
+  // Subtitle Color (PAGE)
   const subtitleColor = scrolled
-    ? "text-slate-500 dark:text-slate-400" // Dark grey when scrolled (white bg)
-    : "text-slate-300 [text-shadow:_0_1px_2px_rgb(0_0_0_/_50%)]"; // Light grey when transparent (dark image bg)
+    ? "text-slate-500 dark:text-slate-400" 
+    : "text-slate-300 [text-shadow:_0_1px_2px_rgb(0_0_0_/_50%)]"; 
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -164,6 +169,12 @@ export default function Header() {
 
                 <div className={`h-8 w-px transition-colors duration-300 ${scrolled ? 'bg-slate-300 dark:bg-white/20' : 'bg-white/40'}`} />
 
+                {/* ⚡ NOTIFICATION BELL (DESKTOP) */}
+                {/* Wrapped in div to apply textColor so the icon adapts to scroll state */}
+                <div className={textColor}>
+                   <NotificationBell isAdmin={isAdmin} />
+                </div>
+
                 <button 
                     onClick={toggleTheme}
                     className={`p-2.5 rounded-full transition-all duration-300 ${textColor} hover:bg-white/20 dark:hover:bg-white/10 hover:rotate-12`}
@@ -232,8 +243,15 @@ export default function Header() {
             )}
           </nav>
 
-          {/* MOBILE TOGGLE */}
+          {/* MOBILE TOGGLE & TOOLS */}
           <div className="md:hidden flex items-center gap-5">
+              {/* ⚡ NOTIFICATION BELL (MOBILE) - Added here for easy access */}
+              {user && (
+                <div className={textColor}>
+                   <NotificationBell isAdmin={isAdmin} />
+                </div>
+              )}
+
               <button onClick={toggleTheme} className={`transition-all duration-300 hover:rotate-12 ${textColor}`}>
                  {dark ? <Sun size={24}/> : <Moon size={24}/>}
               </button>
