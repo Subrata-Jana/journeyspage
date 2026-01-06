@@ -7,7 +7,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { 
   Camera, MapPin, Award, Edit2, Globe, BookOpen, Heart, 
   Share2, Shield, Save, User, Link as LinkIcon, ArrowLeft,
-  Facebook, Instagram, Youtube, Twitter, Gem, Lock
+  Facebook, Instagram, Youtube, Twitter, Gem, Lock, Eye, Copy
 } from "lucide-react";
 import { motion } from "framer-motion";
 import toast, { Toaster } from 'react-hot-toast';
@@ -41,7 +41,7 @@ export default function Profile() {
   });
 
   // Stats
-  const [stats, setStats] = useState({ stories: 0, likes: 0, views: 0, countries: 0 });
+  const [stats, setStats] = useState({ stories: 0, likes: 0, views: 0, shares: 0, countries: 0 });
 
   // ⚡ INIT GAMIFICATION HOOK
   const { currentRank, badges, loot, loading: gameLoading } = useGamification(profileData.xp, profileData.badges, profileData.inventory);
@@ -51,6 +51,7 @@ export default function Profile() {
     if (!user) return;
     const fetchData = async () => {
       try {
+        // 1. Fetch User Profile
         const userDocRef = doc(db, "users", user.uid);
         const userDoc = await getDoc(userDocRef);
         
@@ -80,20 +81,46 @@ export default function Profile() {
             }));
         }
 
+        // 2. Fetch Stories for Stats (Math Fix Applied)
         const q = query(collection(db, "stories"), where("authorId", "==", user.uid));
         const snap = await getDocs(q);
         
-        let totalViews = 0, totalLikes = 0;
+        let totalViews = 0, totalLikes = 0, totalShares = 0;
         const uniqueLocations = new Set();
 
         snap.forEach(doc => {
           const d = doc.data();
+          
+          // 🛠️ FIX: Views
           totalViews += (d.views || 0);
-          totalLikes += (d.likes || 0);
-          if (d.location) uniqueLocations.add(d.location.split(',').pop().trim());
+          
+          // 🛠️ FIX: Likes (Number vs Array)
+          const l = typeof d.likeCount === 'number' 
+              ? d.likeCount 
+              : (Array.isArray(d.likes) ? d.likes.length : 0);
+          totalLikes += l;
+
+          // 🛠️ FIX: Shares (Number vs Array)
+          const s = typeof d.shareCount === 'number' 
+              ? d.shareCount 
+              : (Array.isArray(d.sharedBy) ? d.sharedBy.length : 0);
+          totalShares += s;
+
+          // Location
+          if (d.locationData && d.locationData.value && d.locationData.value.place_id) {
+             uniqueLocations.add(d.locationData.value.place_id);
+          } else if (d.location) {
+             uniqueLocations.add(d.location.split(',')[0].trim().toLowerCase());
+          }
         });
 
-        setStats({ stories: snap.size, views: totalViews, likes: totalLikes, countries: uniqueLocations.size });
+        setStats({ 
+            stories: snap.size, 
+            views: totalViews, 
+            likes: totalLikes, 
+            shares: totalShares, // 🆕 Added
+            countries: uniqueLocations.size 
+        });
 
       } catch (error) {
         console.error("Error fetching profile:", error);
@@ -105,14 +132,28 @@ export default function Profile() {
     fetchData();
   }, [user]);
 
-  // Save
+  // Save Helper: Auto-prepend HTTPS
+  const cleanUrl = (url) => {
+      if (!url) return "";
+      if (!/^https?:\/\//i.test(url)) return `https://${url}`;
+      return url;
+  };
+
   const handleSave = async () => {
     if (!user) return;
     try {
-      await setDoc(doc(db, "users", user.uid), {
-        ...profileData,
-        updatedAt: new Date()
-      }, { merge: true });
+      const updatedData = {
+          ...profileData,
+          website: cleanUrl(profileData.website),
+          facebook: cleanUrl(profileData.facebook),
+          instagram: cleanUrl(profileData.instagram),
+          twitter: cleanUrl(profileData.twitter),
+          youtube: cleanUrl(profileData.youtube),
+          updatedAt: new Date()
+      };
+      
+      setProfileData(updatedData); // Update local state immediately
+      await setDoc(doc(db, "users", user.uid), updatedData, { merge: true });
       setIsEditing(false);
       toast.success("Profile updated!");
     } catch (error) {
@@ -139,6 +180,13 @@ export default function Profile() {
     }
   };
 
+  // 🆕 Share Profile Function
+  const handleShareProfile = () => {
+      const url = `${window.location.origin}/profile/${user.uid}`;
+      navigator.clipboard.writeText(url);
+      toast.success("Profile link copied to clipboard!");
+  };
+
   if (loading || gameLoading) return <div className="min-h-screen bg-[#0B0F19] text-white flex items-center justify-center">Loading Passport...</div>;
 
   return (
@@ -160,7 +208,7 @@ export default function Profile() {
         </label>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 -mt-24 relative z-10">
+      <div className="max-w-6xl mx-auto px-6 -mt-24 relative z-10">
         
         {/* PASSPORT HEADER */}
         <div className="flex flex-col md:flex-row gap-8 items-end md:items-start mb-12">
@@ -213,7 +261,7 @@ export default function Profile() {
                 </div>
 
                 {/* ⚡ DYNAMIC LEVEL PROGRESS */}
-                <div className="max-w-md">
+                <div className="max-w-md mt-2">
                     <LevelProgress currentXP={profileData.xp} rankData={currentRank} />
                 </div>
 
@@ -224,7 +272,11 @@ export default function Profile() {
                 {isEditing ? (
                   <button onClick={handleSave} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-emerald-900/20"><Save size={18}/> Save</button>
                 ) : (
-                  <button onClick={() => setIsEditing(true)} className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-6 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all backdrop-blur-md"><Edit2 size={18}/> Edit</button>
+                  <>
+                    <button onClick={() => setIsEditing(true)} className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all backdrop-blur-md"><Edit2 size={18}/> Edit</button>
+                    {/* 🆕 SHARE PROFILE BUTTON */}
+                    <button onClick={handleShareProfile} className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-3 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all backdrop-blur-md" title="Share Profile"><Share2 size={18}/></button>
+                  </>
                 )}
               </div>
             </div>
@@ -258,12 +310,14 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* STATS */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
+        {/* ⚡ FIXED STATS GRID (5 Columns) */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-12">
           <StatBox label="Stories Written" value={stats.stories} icon={<BookOpen className="text-blue-400" />} />
           <StatBox label="Places Visited" value={stats.countries} icon={<Globe className="text-emerald-400" />} />
           <StatBox label="Total Likes" value={stats.likes} icon={<Heart className="text-red-400" />} />
-          <StatBox label="Total Views" value={stats.views} icon={<Share2 className="text-purple-400" />} />
+          <StatBox label="Total Views" value={stats.views} icon={<Eye className="text-purple-400" />} />
+          {/* 🆕 SHARES STAT */}
+          <StatBox label="Total Shares" value={stats.shares} icon={<Share2 className="text-orange-400" />} />
         </div>
 
         {/* ⚡ DYNAMIC ACHIEVEMENTS & TREASURES */}

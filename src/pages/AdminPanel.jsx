@@ -4,7 +4,7 @@ import {
   collection, query, getDocs, doc, orderBy, deleteDoc, setDoc, getDoc, onSnapshot, updateDoc 
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { signOut } from "firebase/auth";
+import { signOut, onAuthStateChanged } from "firebase/auth";
 import { db, auth, storage } from "../services/firebase";
 import { 
   ShieldAlert, Layout, MapPin, Tag, Zap, 
@@ -182,7 +182,7 @@ function SidebarItem({ icon, label, active, onClick, isDark }) {
     )
 }
 
-// --- 🛡️ UPGRADED STORY MODERATION ---
+// --- 🛡️ UPGRADED STORY MODERATION (FIXED) ---
 function StoryModeration({ isDark }) {
     const [allStories, setAllStories] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -198,7 +198,14 @@ function StoryModeration({ isDark }) {
     const [isReturning, setIsReturning] = useState(false); 
 
     useEffect(() => {
-        async function fetchStories() {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            // 🛡️ SECURITY FIX: Explicitly check email before fetching
+            // This prevents the "Permission Denied" error loop
+            if (!user || user.email !== "sjsubratajana@gmail.com") {
+                setLoading(false);
+                return; 
+            }
+
             try {
                 const q = query(collection(db, "stories"), orderBy("updatedAt", sortOrder));
                 const snap = await getDocs(q);
@@ -210,19 +217,19 @@ function StoryModeration({ isDark }) {
                 setAllStories(fetched);
             } catch (error) {
                 console.error("Error fetching stories:", error);
-                toast.error("Could not load stories");
+                // toast.error("Could not load stories"); // Suppress toast on initial load to keep UI clean
             } finally {
                 setLoading(false);
             }
-        }
-        fetchStories();
+        });
+
+        return () => unsubscribe();
     }, [sortOrder]); 
 
     // ⚡ FILTER & SEARCH LOGIC
     const filteredStories = useMemo(() => {
         let stories = allStories;
 
-        // 1. Status Filter
         if (filterStatus !== 'all') {
             stories = stories.filter(story => {
                 if (filterStatus === 'pending') {
@@ -232,7 +239,6 @@ function StoryModeration({ isDark }) {
             });
         }
 
-        // 2. Search Filter
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             stories = stories.filter(s => 
@@ -293,11 +299,11 @@ function StoryModeration({ isDark }) {
             });
 
             await sendNotification({
-                recipientId: storyToReturn.authorId, // Send to the Author
+                recipientId: storyToReturn.authorId,
                 type: 'alert',
                 title: 'Action Required: Story Returned',
                 message: `Admin has requested changes on "${storyToReturn.title}". Reason: ${note || "See flagged items."}`,
-                link: `/create-story?edit=${storyToReturn.id}` // Link directly to fix page
+                link: `/create-story?edit=${storyToReturn.id}`
             });
 
             setAllStories(prev => prev.map(s => s.id === storyToReturn.id ? { 
@@ -330,7 +336,6 @@ function StoryModeration({ isDark }) {
     const cardClass = isDark ? "bg-[#111625] border-white/5" : "bg-white border-slate-200 shadow-sm";
     const issueCount = storyToReturn ? Object.keys(storyToReturn.feedback || {}).length : 0;
 
-    // Helper for formatting time
     const formatTimeAgo = (timestamp) => {
         if (!timestamp) return "N/A";
         try {
@@ -340,7 +345,6 @@ function StoryModeration({ isDark }) {
 
     return (
         <div className="space-y-6 animate-in slide-in-from-right duration-500 pb-20">
-            {/* ⚡ PREMIUM STATS HEADER */}
             <div className="grid grid-cols-3 gap-4 mb-2">
                 <div className={`p-4 rounded-2xl border ${isDark ? 'bg-blue-500/10 border-blue-500/20' : 'bg-blue-50 border-blue-100'}`}>
                     <div className="text-xs font-bold uppercase tracking-wider text-blue-500 mb-1">Pending Review</div>
@@ -361,7 +365,6 @@ function StoryModeration({ isDark }) {
                     <ShieldAlert className="text-orange-500"/> Story Moderation
                 </h2>
                 
-                {/* ⚡ SEARCH & SORT BAR */}
                 <div className="flex gap-2 w-full md:w-auto">
                     <div className={`relative flex-1 md:w-64`}>
                         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
@@ -398,8 +401,8 @@ function StoryModeration({ isDark }) {
                         <tr>
                             <th className="p-4">Story & Revisions</th>
                             <th className="p-4">Author</th>
-                            <th className="p-4">Timeline</th> {/* ⚡ UPGRADED COLUMN */}
-                            <th className="p-4">Status & Aging</th> {/* ⚡ UPGRADED COLUMN */}
+                            <th className="p-4">Timeline</th> 
+                            <th className="p-4">Status & Aging</th> 
                             <th className="p-4 text-right">Actions</th>
                         </tr>
                     </thead>
@@ -417,7 +420,6 @@ function StoryModeration({ isDark }) {
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <div className={`font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{story.title || "Untitled"}</div>
-                                                {/* ⚡ REVISION BADGE */}
                                                 {story.revisionCount > 0 && (
                                                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-white flex items-center gap-1" title="Revision Count">
                                                         <History size={10}/> v{story.revisionCount}
@@ -438,8 +440,6 @@ function StoryModeration({ isDark }) {
                                         {story.authorName || "Unknown"}
                                     </div>
                                 </td>
-                                
-                                {/* ⚡ TIMELINE COLUMN */}
                                 <td className="p-4">
                                     <div className="flex flex-col gap-1">
                                         <div className="text-xs font-medium text-emerald-500 flex items-center gap-1" title="Last Updated">
@@ -450,8 +450,6 @@ function StoryModeration({ isDark }) {
                                         </div>
                                     </div>
                                 </td>
-
-                                {/* ⚡ STATUS & AGING COLUMN */}
                                 <td className="p-4">
                                     <div className="flex flex-col items-start gap-1">
                                         <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide inline-flex items-center gap-1.5
@@ -465,7 +463,6 @@ function StoryModeration({ isDark }) {
                                             {story.published && story.status !== 'approved' && story.status !== 'returned' && <Clock size={12}/>}
                                             {story.status || (story.published ? "Pending" : "Draft")}
                                         </span>
-                                        {/* ⚡ PENDENCY CLOCK */}
                                         {story.published && story.status !== 'approved' && story.status !== 'returned' && (
                                             <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1 ml-1">
                                                 ⏳ Waited: {formatTimeAgo(story.updatedAt)}
@@ -473,7 +470,6 @@ function StoryModeration({ isDark }) {
                                         )}
                                     </div>
                                 </td>
-
                                 <td className="p-4 text-right">
                                     <div className="flex justify-end gap-2">
                                         <button 
@@ -482,8 +478,6 @@ function StoryModeration({ isDark }) {
                                         >
                                             <Eye size={14}/> Review
                                         </button>
-
-                                        {/* Show Return Button if not already Returned/Approved */}
                                         {story.status !== 'approved' && story.status !== 'returned' && (
                                             <button 
                                                 onClick={() => openReturnModal(story)}
@@ -493,7 +487,6 @@ function StoryModeration({ isDark }) {
                                                 <RotateCcw size={16} />
                                             </button>
                                         )}
-                                        
                                         <button 
                                             onClick={() => handleDelete(story.id)} 
                                             className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition-colors" 
@@ -773,7 +766,7 @@ function ManageLoot({ isDark }) {
                           {catItems.map(item => (
                               <div key={item.id} className={`flex items-center gap-3 p-3 rounded-xl border relative group ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
                                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0
-                                      ${item.rarity === 'Common' ? 'bg-slate-500' : item.rarity === 'Uncommon' ? 'bg-emerald-600' : 'bg-yellow-600 shadow-[0_0_15px_rgba(234,179,8,0.3)]'}
+                                      {item.rarity === 'Common' ? 'bg-slate-500' : item.rarity === 'Uncommon' ? 'bg-emerald-600' : 'bg-yellow-600 shadow-[0_0_15px_rgba(234,179,8,0.3)]'}
                                   `}>{renderIcon(item.icon)}</div>
                                   <div className="flex-1 min-w-0">
                                       <p className={`font-bold text-sm truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{item.name}</p>

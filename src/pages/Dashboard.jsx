@@ -27,7 +27,7 @@ export default function Dashboard() {
 
   // --- VIEW STATE ---
   const [currentView, setCurrentView] = useState("overview");
-  const [stories, setStories] = useState([]); // Displayed stories (filtered/limited)
+  const [stories, setStories] = useState([]); 
   const [loadingStories, setLoadingStories] = useState(true);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
 
@@ -36,7 +36,7 @@ export default function Dashboard() {
     totalStories: 0,
     totalLikes: 0,
     totalViews: 0,
-    totalShares: 0, // 🆕 Added Shares
+    totalShares: 0,
     placesVisited: 0
   });
 
@@ -48,6 +48,7 @@ export default function Dashboard() {
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
   const [siteLogo, setSiteLogo] = useState(null);
 
+  // ⚡ GAMIFICATION ENGINE
   const { currentRank, badges, loot, loading: gameLoading } = useGamification(userData.xp, userData.badges, userData.inventory);
 
   // --- THEME & LOGO ---
@@ -57,6 +58,8 @@ export default function Dashboard() {
     else root.classList.remove("dark");
     localStorage.setItem("theme", theme);
   }, [theme]);
+
+  const toggleTheme = () => setTheme(prev => (prev === "light" ? "dark" : "light"));
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "meta", "site_config"), snap => {
@@ -89,32 +92,34 @@ export default function Dashboard() {
     return () => unsubUser();
   }, [user]);
 
-  // --- 2. CALCULATE ACCURATE STATS (ALL STORIES) ---
+  // --- 2. CALCULATE ACCURATE STATS ---
   useEffect(() => {
     if (!user?.uid) return;
 
     const fetchStats = async () => {
       try {
-        // Fetch ALL stories to calculate correct totals
-        const q = query(
-          collection(db, "stories"),
-          where("authorId", "==", user.uid)
-        );
-        
+        const q = query(collection(db, "stories"), where("authorId", "==", user.uid));
         const snap = await getDocs(q);
         
         let likes = 0;
         let views = 0;
-        let shares = 0; // 🆕 Track Shares
+        let shares = 0; 
         const uniquePlaces = new Set(); 
 
         snap.docs.forEach(doc => {
           const data = doc.data();
-          likes += (data.likes || 0); 
-          views += (data.views || 0);
-          shares += (data.shares || 0); // 🆕 Sum Shares
 
-          // Smart Location Counting
+          // Handle Number vs Array for Likes/Shares
+          const storyLikes = typeof data.likeCount === 'number' 
+              ? data.likeCount : (Array.isArray(data.likes) ? data.likes.length : 0);
+          likes += storyLikes;
+
+          const storyShares = typeof data.shareCount === 'number' 
+              ? data.shareCount : (Array.isArray(data.sharedBy) ? data.sharedBy.length : 0);
+          shares += storyShares;
+
+          views += (data.views || 0);
+
           if (data.locationData && data.locationData.value && data.locationData.value.place_id) {
             uniquePlaces.add(data.locationData.value.place_id);
           } else if (data.location) {
@@ -126,17 +131,14 @@ export default function Dashboard() {
           totalStories: snap.size,
           totalLikes: likes,
           totalViews: views,
-          totalShares: shares, // 🆕 Set State
+          totalShares: shares,
           placesVisited: uniquePlaces.size
         });
 
-      } catch (error) {
-        console.error("Stats calculation failed:", error);
-      }
+      } catch (error) { console.error("Stats error:", error); }
     };
-
     fetchStats();
-  }, [user?.uid, stories]); // Recalculate when stories change
+  }, [user?.uid, stories]); 
 
   // --- 3. LOAD DISPLAY STORIES ---
   useEffect(() => {
@@ -144,9 +146,7 @@ export default function Dashboard() {
     const loadDisplayStories = async () => {
       setLoadingStories(true);
       if (currentView === "feed") {
-        setStories([]);
-        setLoadingStories(false);
-        return;
+        setStories([]); setLoadingStories(false); return;
       }
       try {
         const limitCount = currentView === "stories" ? 50 : 5;
@@ -158,19 +158,14 @@ export default function Dashboard() {
         );
         const snap = await getDocs(q);
         setStories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch (err) {
-        console.error("Failed to load stories:", err);
-      } finally {
-        setLoadingStories(false);
-      }
+      } catch (err) { console.error(err); } 
+      finally { setLoadingStories(false); }
     };
     loadDisplayStories();
   }, [user?.uid, currentView]);
 
-
-  const toggleTheme = () => setTheme(prev => (prev === "light" ? "dark" : "light"));
-  
-  const handleLogout = async () => {
+  const handleLogout = async (e) => {
+    if(e) e.stopPropagation();
     try { await logout(); navigate("/login"); } 
     catch (error) { toast.error("Failed to log out"); }
   };
@@ -221,7 +216,8 @@ export default function Dashboard() {
 
       {/* SIDEBAR */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-[#0B0F19]/95 backdrop-blur-2xl border-r border-slate-200 dark:border-white/5 p-6 flex flex-col transition-transform duration-300 lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex items-center gap-3 mb-12 px-2 relative">
+        {/* Logo */}
+        <div className="flex items-center gap-3 mb-10 px-2 relative">
           {siteLogo ? (<img src={siteLogo} alt="Logo" className={`h-12 w-auto object-contain transition-all duration-300 ${theme === 'light' ? 'invert brightness' : ''}`} />) : (<div className="relative w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center text-white shadow-xl shadow-orange-500/20 border border-white/10"><Compass size={24} /></div>)}
           <div className="flex flex-col -space-y-0.5"><span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white leading-none">Journeys</span><span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 tracking-[0.35em] uppercase leading-none ml-[1px]">Page</span></div>
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden ml-auto text-slate-400 hover:text-white"><X size={24} /></button>
@@ -231,17 +227,57 @@ export default function Dashboard() {
           <NavItem icon={<BarChart2 size={20}/>} label="Overview" active={currentView === 'overview'} onClick={() => setCurrentView('overview')} />
           <NavItem icon={<Globe size={20}/>} label="Travel Hub" active={currentView === 'feed'} onClick={() => setCurrentView('feed')} />
           <NavItem icon={<FileText size={20}/>} label="My Stories" active={currentView === 'stories'} onClick={() => setCurrentView('stories')} />
-          <div className="pt-8 pb-4 flex items-center justify-between px-4"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Settings</span><button onClick={toggleTheme} className="p-1.5 rounded-lg bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400 hover:text-orange-500 transition-colors">{theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}</button></div>
+          
+          {/* Settings Group */}
+          <div className="mt-8 mb-2 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</div>
           <NavItem icon={<Settings size={20}/>} label="Profile & Settings" onClick={() => navigate('/profile')} />
-          <button onClick={handleLogout} className="w-full group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-red-500 hover:bg-red-500/10 hover:text-red-600 border border-transparent mt-2"><LogOut size={20} /> <span className="text-sm font-medium">Log Out</span></button>
         </nav>
 
-        <div className="mt-auto relative group">
-          <div className="relative flex flex-col bg-slate-50 dark:bg-white/[0.03] backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-2xl p-4 overflow-hidden cursor-pointer hover:border-orange-500/30 transition-all duration-300" onClick={() => navigate('/profile')}>
-             <div className="flex items-center gap-4">
-                <div className="relative"><div className="relative w-10 h-10 rounded-full bg-slate-200 dark:bg-[#0B0F19]"><img src={userData.photoURL || `https://ui-avatars.com/api/?name=${userData.name || 'User'}`} className="w-full h-full rounded-full object-cover" alt="User" /></div><div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-[#0B0F19] rounded-full"></div></div>
-                <div className="flex-1 min-w-0"><h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">{userData.name || "User"}</h4><p className="text-[10px] text-slate-500 truncate">{currentRank?.name || "Traveler"}</p></div>
+        {/* 👤 UPGRADED "PASSPORT" USER CARD (Vertical Layout) */}
+        <div className="mt-auto pt-6 border-t border-slate-100 dark:border-white/5">
+          <div 
+            className="group relative bg-slate-50 dark:bg-[#151b2b] p-4 rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden cursor-pointer transition-all hover:border-orange-500/30 hover:shadow-lg"
+            onClick={() => navigate('/profile')}
+          >
+             {/* Background Decoration */}
+             <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/5 rounded-full blur-2xl -mr-10 -mt-10 transition-opacity opacity-50 group-hover:opacity-100"/>
+             
+             <div className="flex items-center gap-3 mb-3">
+                <div className="relative shrink-0">
+                    <img src={userData.photoURL || `https://ui-avatars.com/api/?name=${userData.name || 'User'}`} className="w-12 h-12 rounded-full object-cover border-2 border-white dark:border-[#0B0F19] shadow-sm" alt="User" />
+                    <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#0B0F19] rounded-full"></div>
+                </div>
+                <div className="flex-1 min-w-0">
+                   <h4 className="font-bold text-slate-900 dark:text-white truncate text-base">{userData.name || "User"}</h4>
+                   <div className="flex items-center gap-2 mt-0.5">
+                       <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-500/20 uppercase tracking-wide">
+                           {currentRank?.name || "Scout"}
+                       </span>
+                   </div>
+                </div>
              </div>
+
+             {/* Mini XP Bar */}
+             <div className="mb-3">
+                <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-bold mb-1">
+                    <span>Lvl {Math.floor((userData.xp || 0)/100) + 1}</span>
+                    <span>{userData.xp} XP</span>
+                </div>
+                <div className="h-1.5 w-full bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden">
+                    <div 
+                        className="h-full bg-gradient-to-r from-orange-500 to-red-500 rounded-full" 
+                        style={{ width: `${Math.min((userData.xp % 100), 100)}%` }}
+                    />
+                </div>
+             </div>
+
+             {/* Logout Button */}
+             <button 
+                onClick={handleLogout} 
+                className="w-full py-2 flex items-center justify-center gap-2 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/5 text-slate-500 dark:text-slate-400 text-xs font-bold hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-500/20 transition-all"
+             >
+                <LogOut size={14}/> Sign Out
+             </button>
           </div>
         </div>
       </aside>
@@ -251,9 +287,27 @@ export default function Dashboard() {
         <header className="sticky top-0 z-30 bg-white/80 dark:bg-[#0B0F19]/80 backdrop-blur-md border-b border-slate-200 dark:border-white/5 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 text-slate-400 hover:text-white"><Menu size={20} /></button>
-            <h1 className="text-xl font-semibold hidden sm:block capitalize bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">{currentView === 'overview' && 'Dashboard Overview'}{currentView === 'feed' && 'Travel Hub'} {currentView === 'stories' && 'Your Journey Log'}</h1>
+            <h1 className="text-xl font-semibold hidden sm:block capitalize bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">
+                {currentView === 'overview' && 'Dashboard Overview'}
+                {currentView === 'feed' && 'Travel Hub'} 
+                {currentView === 'stories' && 'Your Journey Log'}
+            </h1>
           </div>
-          <button onClick={() => navigate("/create-story")} className="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium shadow-lg shadow-orange-500/20 transition-all hover:scale-105 active:scale-95"><Plus size={16} /> <span className="hidden sm:inline">New Journey</span></button>
+          
+          <div className="flex items-center gap-3">
+              {/* 🌓 HEADER THEME TOGGLE */}
+              <button 
+                onClick={toggleTheme} 
+                className="p-2.5 rounded-xl bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/10 hover:text-orange-500 hover:border-orange-500/30 transition-all shadow-sm"
+                title="Switch Theme"
+              >
+                {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+              </button>
+
+              <button onClick={() => navigate("/create-story")} className="bg-orange-600 hover:bg-orange-500 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-orange-500/20 transition-all hover:scale-105 active:scale-95">
+                <Plus size={18} /> <span className="hidden sm:inline">New Journey</span>
+              </button>
+          </div>
         </header>
 
         <div className="p-6 md:p-8 max-w-7xl mx-auto min-h-screen">
@@ -299,13 +353,12 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* 2. STATS GRID - 🆕 UPDATED TO 5 COLS FOR SHARE CARD */}
+                {/* 2. STATS GRID */}
                 <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                     <StatCard title="Stories Written" value={dashboardStats.totalStories} icon={<FileText className="text-blue-500" />} />
                     <StatCard title="Places Visited" value={dashboardStats.placesVisited} icon={<MapPin className="text-emerald-500" />} />
                     <StatCard title="Total Likes" value={dashboardStats.totalLikes} icon={<TrendingUp className="text-pink-500" />} />
                     <StatCard title="Total Views" value={dashboardStats.totalViews} icon={<Eye className="text-purple-500" />} />
-                    {/* 🆕 SHARE CARD */}
                     <StatCard title="Total Shares" value={dashboardStats.totalShares} icon={<Share2 className="text-orange-500" />} />
                 </section>
 
@@ -350,9 +403,85 @@ export default function Dashboard() {
 }
 
 // Helpers
-function NavItem({ icon, label, active, onClick }) { return (<button onClick={onClick} className={`w-full group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${active ? "bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20" : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 border border-transparent"}`}>{icon} <span className="text-sm font-medium">{label}</span></button>); }
-function StatCard({ title, value, icon }) { return (<div className="bg-white dark:bg-[#111625]/60 p-6 rounded-2xl border border-slate-200 dark:border-white/5 backdrop-blur-sm shadow-sm"><div className="flex justify-between items-start mb-4"><div className="p-2 bg-slate-100 dark:bg-white/5 rounded-lg">{icon}</div></div><div className="text-3xl font-bold text-slate-900 dark:text-white mb-1">{value}</div><div className="text-xs text-slate-500 uppercase tracking-wide font-medium">{title}</div></div>); }
-const getStatusConfig = (story) => { if (story.status === 'returned') return { label: "NEEDS REVISION", color: "bg-red-500/10 text-red-500 border-red-500/20", icon: <RotateCcw size={10} strokeWidth={3}/>, canEdit: true }; if (story.status === 'approved') return { label: "PUBLISHED", color: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20", icon: <CheckCircle size={10} strokeWidth={3}/>, canEdit: false }; if (story.published) return { label: "IN REVIEW", color: "bg-blue-500/10 text-blue-500 border-blue-500/20", icon: <Clock size={10} strokeWidth={3}/>, canEdit: false }; return { label: "DRAFT", color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20", icon: <FileText size={10} strokeWidth={3}/>, canEdit: true }; };
-function StoryRow({ story, navigate, onDelete }) { const status = getStatusConfig(story); return (<div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors group last:border-0"><div><div className="font-medium text-slate-900 dark:text-white group-hover:text-orange-500 cursor-pointer transition-colors" onClick={() => navigate(`/story/${story.id}`)}>{story.title || "Untitled"}</div><div className="text-xs text-slate-500 mt-0.5">{story.location || "No Location"} • {story.month || "No Date"}</div></div><div className="flex items-center gap-3"><span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-2 py-1 rounded border ${status.color}`}>{status.icon} {status.label}</span>{status.canEdit && (<button onClick={() => navigate(`/create-story?edit=${story.id}`)} className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors"><Pencil size={16}/></button>)}</div></div>) }
-function StoryCard({ story, navigate, onDelete }) { const status = getStatusConfig(story); return (<div className={`group relative flex flex-col bg-white dark:bg-[#111625]/40 border rounded-2xl overflow-hidden transition-all hover:-translate-y-1 hover:shadow-xl ${story.status === 'returned' ? 'border-red-500/50 shadow-red-500/10' : 'border-slate-200 dark:border-white/5 hover:border-orange-500/30'}`}><div className="h-48 bg-slate-100 dark:bg-slate-800 relative overflow-hidden shrink-0">{story.coverImage ? (<img src={story.coverImage} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="Cover" />) : (<div className="w-full h-full flex items-center justify-center text-slate-400"><ImageIcon size={32}/></div>)}<div className="absolute top-3 right-3"><span className={`flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full backdrop-blur-md border ${status.color}`}>{status.icon} {status.label}</span></div></div><div className="p-5 flex-1 flex flex-col"><h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1 truncate">{story.title || "Untitled Journey"}</h3><div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-4"><Compass size={12}/> {story.location || "Unknown"} <span className="w-1 h-1 bg-slate-300 dark:bg-slate-600 rounded-full"/> {story.month}</div>{story.status === 'returned' && story.adminNotes && (<div className="mb-4 p-3 bg-red-500/5 border border-red-500/10 rounded-lg text-xs"><div className="flex items-center gap-1.5 text-red-500 font-bold mb-1"><AlertCircle size={12}/> Needs Attention:</div><p className="text-slate-600 dark:text-slate-300 leading-snug">{story.adminNotes}</p></div>)}<div className="mt-auto flex items-center justify-between border-t border-slate-200 dark:border-white/5 pt-4"><button onClick={() => navigate(`/story/${story.id}`)} className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 hover:bg-slate-100 dark:hover:bg-white/5 px-2 py-1 rounded-lg transition-colors"><Eye size={14}/> View</button><div className="flex gap-1">{status.canEdit && (<><button onClick={() => navigate(`/create-story?edit=${story.id}`)} className={`p-2 rounded-lg transition-colors ${story.status === 'returned' ? 'text-white bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/30 animate-pulse' : 'text-blue-500 hover:bg-blue-500/10'}`} title="Edit Story"><Pencil size={14}/></button><button onClick={() => onDelete(story.id, story.status, story.published)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors" title="Delete Story"><Trash2 size={14}/></button></>)}</div></div></div></div>) }
+function NavItem({ icon, label, active, onClick }) { 
+    return (
+        <button onClick={onClick} className={`w-full group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${active ? "bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20" : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 border border-transparent"}`}>
+            {icon} <span className="text-sm font-medium">{label}</span>
+        </button>
+    ); 
+}
+
+function StatCard({ title, value, icon }) { 
+    return (
+        <div className="bg-white dark:bg-[#111625]/60 p-6 rounded-2xl border border-slate-200 dark:border-white/5 backdrop-blur-sm shadow-sm group hover:border-orange-500/20 transition-all">
+            <div className="flex justify-between items-start mb-4">
+                <div className="p-2 bg-slate-100 dark:bg-white/5 rounded-lg group-hover:scale-110 transition-transform">{icon}</div>
+            </div>
+            <div className="text-3xl font-bold text-slate-900 dark:text-white mb-1">{value}</div>
+            <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">{title}</div>
+        </div>
+    ); 
+}
+
+const formatStoryDate = (story) => {
+    if (story.createdAt?.seconds) {
+        return new Date(story.createdAt.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    return story.month || "Unknown Date";
+};
+
+const getStatusConfig = (story) => { 
+    if (story.status === 'returned') return { label: "NEEDS REVISION", color: "bg-red-500/10 text-red-500 border-red-500/20", icon: <RotateCcw size={10} strokeWidth={3}/>, canEdit: true }; 
+    if (story.status === 'approved') return { label: "PUBLISHED", color: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20", icon: <CheckCircle size={10} strokeWidth={3}/>, canEdit: false }; 
+    if (story.published) return { label: "IN REVIEW", color: "bg-blue-500/10 text-blue-500 border-blue-500/20", icon: <Clock size={10} strokeWidth={3}/>, canEdit: false }; 
+    return { label: "DRAFT", color: "bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/20", icon: <FileText size={10} strokeWidth={3}/>, canEdit: true }; 
+};
+
+function StoryRow({ story, navigate, onDelete }) { 
+    const status = getStatusConfig(story); 
+    const displayDate = formatStoryDate(story); 
+
+    return (
+        <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors group last:border-0">
+            <div>
+                <div className="font-medium text-slate-900 dark:text-white group-hover:text-orange-500 cursor-pointer transition-colors" onClick={() => navigate(`/story/${story.id}`)}>{story.title || "Untitled"}</div>
+                <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
+                    <Compass size={10}/> {story.location || "No Location"} 
+                    <span className="w-0.5 h-0.5 rounded-full bg-slate-400"/>
+                    {displayDate}
+                </div>
+            </div>
+            <div className="flex items-center gap-3">
+                <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-2 py-1 rounded border ${status.color}`}>{status.icon} {status.label}</span>
+                {status.canEdit && (<button onClick={() => navigate(`/create-story?edit=${story.id}`)} className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors"><Pencil size={16}/></button>)}
+            </div>
+        </div>
+    ) 
+}
+
+function StoryCard({ story, navigate, onDelete }) { 
+    const status = getStatusConfig(story); 
+    const displayDate = formatStoryDate(story);
+
+    return (
+        <div className={`group relative flex flex-col bg-white dark:bg-[#111625]/40 border rounded-2xl overflow-hidden transition-all hover:-translate-y-1 hover:shadow-xl ${story.status === 'returned' ? 'border-red-500/50 shadow-red-500/10' : 'border-slate-200 dark:border-white/5 hover:border-orange-500/30'}`}>
+            <div className="h-48 bg-slate-100 dark:bg-slate-800 relative overflow-hidden shrink-0">
+                {story.coverImage ? (<img src={story.coverImage} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="Cover" />) : (<div className="w-full h-full flex items-center justify-center text-slate-400"><ImageIcon size={32}/></div>)}
+                <div className="absolute top-3 right-3"><span className={`flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full backdrop-blur-md border ${status.color}`}>{status.icon} {status.label}</span></div>
+            </div>
+            <div className="p-5 flex-1 flex flex-col">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1 truncate">{story.title || "Untitled Journey"}</h3>
+                <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-4">
+                    <Compass size={12}/> {story.location || "Unknown"} <span className="w-1 h-1 bg-slate-300 dark:bg-slate-600 rounded-full"/> {displayDate}
+                </div>
+                {story.status === 'returned' && story.adminNotes && (<div className="mb-4 p-3 bg-red-500/5 border border-red-500/10 rounded-lg text-xs"><div className="flex items-center gap-1.5 text-red-500 font-bold mb-1"><AlertCircle size={12}/> Needs Attention:</div><p className="text-slate-600 dark:text-slate-300 leading-snug">{story.adminNotes}</p></div>)}
+                <div className="mt-auto flex items-center justify-between border-t border-slate-200 dark:border-white/5 pt-4">
+                    <button onClick={() => navigate(`/story/${story.id}`)} className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 hover:bg-slate-100 dark:hover:bg-white/5 px-2 py-1 rounded-lg transition-colors"><Eye size={14}/> View</button>
+                    <div className="flex gap-1">{status.canEdit && (<><button onClick={() => navigate(`/create-story?edit=${story.id}`)} className={`p-2 rounded-lg transition-colors ${story.status === 'returned' ? 'text-white bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/30 animate-pulse' : 'text-blue-500 hover:bg-blue-500/10'}`} title="Edit Story"><Pencil size={14}/></button><button onClick={() => onDelete(story.id, story.status, story.published)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors" title="Delete Story"><Trash2 size={14}/></button></>)}</div>
+                </div>
+            </div>
+        </div>
+    ) 
+}
+
 function EmptyState() { return <div className="p-10 text-center text-slate-500 italic">No recent activity. Start a new journey!</div> }

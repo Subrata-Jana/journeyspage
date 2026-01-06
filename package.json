@@ -10,6 +10,7 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
     "browser-image-compression": "^2.0.2",
+    "canvas-confetti": "^1.9.4",
     "date-fns": "^4.1.0",
     "firebase": "^10.7.1",
     "framer-motion": "^11.18.2",

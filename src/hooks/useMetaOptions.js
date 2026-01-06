@@ -1,39 +1,36 @@
-import { useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore"; // ⚡ Changed imports
+import { useState, useEffect } from "react";
+import { doc, getDoc } from "firebase/firestore";
 import { db } from "../services/firebase";
 
-export function useMetaOptions(docId) {
+export function useMetaOptions(collectionName) {
   const [options, setOptions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!docId) return;
+    let mounted = true;
 
-    // ⚡ NEW LOGIC: Listen to the single document, not a collection
-    // This matches: meta -> tripTypes (Document) -> items (Array)
-    const unsub = onSnapshot(doc(db, "meta", docId), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+    const fetchOptions = async () => {
+      try {
+        const docRef = doc(db, "meta", collectionName);
+        const snapshot = await getDoc(docRef);
         
-        // We grab the "items" list directly
-        setOptions(data.items || []);
-        
-        // Debugging: Check console to see data loading
-        console.log(`✅ Loaded ${docId}:`, data.items);
-      } else {
-        console.warn(`⚠️ Document 'meta/${docId}' not found.`);
-        setOptions([]);
+        if (mounted && snapshot.exists()) {
+          setOptions(snapshot.data().items || []);
+        }
+      } catch (error) {
+        // 🤫 Silently fail permissions errors during dev to avoid red console spam
+        if (error.code !== 'permission-denied') {
+            console.error(`Error loading ${collectionName}:`, error);
+        }
+      } finally {
+        if (mounted) setLoading(false);
       }
-      setLoading(false);
-    }, (err) => {
-      console.error(`❌ Failed to load ${docId}:`, err);
-      setOptions([]);
-      setLoading(false);
-    });
+    };
 
-    // Cleanup listener when component unmounts
-    return () => unsub();
-  }, [docId]);
+    fetchOptions();
+
+    return () => { mounted = false; };
+  }, [collectionName]);
 
   return { options, loading };
 }

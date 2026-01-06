@@ -22,7 +22,8 @@ export function useGamification(userXP = 0, userBadges = [], userInventory = [])
 
         if (ranksSnap.exists()) {
             // Sort ranks by threshold (0 -> 100 -> 500...)
-            setRanks(ranksSnap.data().items.sort((a, b) => a.threshold - b.threshold));
+            // Added parseInt to ensure string values from Admin Panel don't break sorting
+            setRanks(ranksSnap.data().items.sort((a, b) => parseInt(a.threshold) - parseInt(b.threshold)));
         }
         if (badgesSnap.exists()) setAllBadges(badgesSnap.data().items || []);
         if (lootSnap.exists()) setAllLoot(lootSnap.data().items || []);
@@ -39,8 +40,9 @@ export function useGamification(userXP = 0, userBadges = [], userInventory = [])
   // --- CALCULATE CURRENT RANK ---
   const getCurrentRank = () => {
     if (ranks.length === 0) return null;
+    
     // Find the highest rank where threshold <= userXP
-    const index = ranks.findLastIndex(r => r.threshold <= userXP);
+    const index = ranks.findLastIndex(r => parseInt(r.threshold || 0) <= userXP);
     const current = ranks[index] || ranks[0];
     const next = ranks[index + 1] || null;
 
@@ -48,10 +50,14 @@ export function useGamification(userXP = 0, userBadges = [], userInventory = [])
     let xpToNext = 0;
 
     if (next) {
-      const range = next.threshold - current.threshold;
-      const gained = userXP - current.threshold;
+      const currentThreshold = parseInt(current.threshold || 0);
+      const nextThreshold = parseInt(next.threshold || 0);
+      
+      const range = nextThreshold - currentThreshold;
+      const gained = userXP - currentThreshold;
+      
       progress = Math.min(100, Math.max(0, (gained / range) * 100));
-      xpToNext = next.threshold - userXP;
+      xpToNext = nextThreshold - userXP;
     }
 
     return { ...current, nextRank: next, progress, xpToNext };
@@ -61,13 +67,16 @@ export function useGamification(userXP = 0, userBadges = [], userInventory = [])
   const getProcessedBadges = () => {
     return allBadges.map(badge => ({
       ...badge,
-      isUnlocked: userBadges.includes(badge.id)
+      // 🛠️ FIX: Check if userBadges (array of objects) contains this badge ID
+      // .includes() fails on objects, so we use .some() to check IDs match
+      isUnlocked: userBadges.some(ub => ub.id === badge.id)
     }));
   };
 
   const getProcessedLoot = () => {
     return allLoot.map(item => ({
       ...item,
+      // Loot is stored as simple ID strings, so .includes() is correct here
       isUnlocked: userInventory.includes(item.id)
     }));
   };
