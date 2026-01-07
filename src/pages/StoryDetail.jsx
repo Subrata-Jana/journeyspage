@@ -1,15 +1,15 @@
 import React, { useEffect, useState, useContext, createContext } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom"; 
 import { 
-  collection, doc, getDoc, getDocs, orderBy, query, updateDoc, onSnapshot, increment 
+  collection, doc, getDoc, getDocs, orderBy, query, updateDoc, onSnapshot
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { motion, useScroll, useSpring, AnimatePresence } from "framer-motion"; 
 import { 
   MapPin, Calendar, Flag, Mountain, Info, Lightbulb, User, 
-  Utensils, BedDouble, Navigation, ChevronRight, 
-  QrCode, ShieldCheck, Share2, Heart, MessageSquare, Send, 
-  ArrowLeft, Sun, Moon, Footprints, Check, Globe2, ShieldAlert, RotateCcw, X, AlertTriangle, AlertCircle, Edit3, Hammer, SearchCheck
+  Utensils, BedDouble, Navigation, 
+  ShieldAlert, Share2, Heart, Send, 
+  ArrowLeft, Sun, Moon, Footprints, Check, Globe2, AlertTriangle, Edit3, Hammer, SearchCheck, Gift
 } from "lucide-react";
 import * as LucideIcons from "lucide-react"; 
 import toast, { Toaster } from "react-hot-toast"; 
@@ -18,6 +18,7 @@ import { useMetaOptions } from "../hooks/useMetaOptions";
 import GallerySlider from "../components/GallerySlider"; 
 import { toggleStoryLike, toggleUserTrack, trackShare } from "../services/gamificationService";
 import TreasureSpawner from "../components/premium/TreasureSpawner"; 
+import GiftModal from "../components/gamification/GiftModal";
 
 // --- CONTEXT FOR SMART REVIEW ---
 const ReviewContext = createContext();
@@ -60,6 +61,9 @@ export default function StoryDetail() {
   const [hasLiked, setHasLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [shareCount, setShareCount] = useState(0);
+  
+  // 🎁 GIFTING STATE
+  const [showGiftModal, setShowGiftModal] = useState(false);
 
   // 🖼️ GALLERY & LIGHTBOX STATE
   const [fullGallery, setFullGallery] = useState([]);
@@ -108,12 +112,10 @@ export default function StoryDetail() {
 
         const storyData = storySnap.data();
         
-        // ⚡ DETECT IF AUTHOR IS VIEWING A RETURNED STORY
         const isAuthor = currentUser?.uid === storyData.authorId;
         const isReturned = storyData.status === 'returned';
         setIsAuthorView(isAuthor && isReturned);
 
-        // Load feedback if it exists
         if (storyData.feedback) {
             const cleanFeedback = {};
             Object.entries(storyData.feedback).forEach(([k, v]) => {
@@ -122,7 +124,6 @@ export default function StoryDetail() {
             setFeedback(cleanFeedback);
         }
 
-        // Access Control
         if (!storyData.published && !isAuthor && !isAdminView) {
           navigate("/dashboard"); return;
         }
@@ -157,7 +158,6 @@ export default function StoryDetail() {
         setStory({ id: storySnap.id, ...storyData });
         setDays(daysData);
 
-        // --- BUILD UNIFIED GALLERY ---
         const allImages = [];
         if (storyData.coverImage) allImages.push({ url: storyData.coverImage, caption: storyData.coverImageCaption || "Cover Photo", is360: false });
         daysData.forEach(d => { if (d.imageUrl) allImages.push({ url: d.imageUrl, caption: d.imageCaption || `Day ${d.dayNumber}: ${d.title}`, is360: false }); });
@@ -222,7 +222,13 @@ export default function StoryDetail() {
         }
     };
 
- const handleShare = async () => {
+  const handleGift = () => {
+      if (!currentUser) return toast.error("Log in to send a Tribute!");
+      if (currentUser.uid === story.authorId) return toast.error("You cannot gift yourself!");
+      setShowGiftModal(true);
+  };
+
+  const handleShare = async () => {
         const shareData = {
             title: story.title,
             text: `Check out this journey: ${story.title} by ${story.authorName}`,
@@ -254,7 +260,6 @@ export default function StoryDetail() {
   const handlePostComment = async () => { 
     if(!newComment.trim()) return;
     setSubmittingComment(true);
-    // Add your actual comment submission logic here
     setTimeout(() => {
         setNewComment("");
         setSubmittingComment(false);
@@ -262,7 +267,6 @@ export default function StoryDetail() {
     }, 1000);
   };
 
-  // --- 🛡️ REVIEW HANDLERS ---
   const toggleFeedback = (fieldId, comment) => {
     if (!isAdminView) return; 
     setFeedback(prev => {
@@ -303,7 +307,6 @@ export default function StoryDetail() {
     return (match && match[2].length === 11) ? match[2] : null;
   };
 
-  // Helper Lookups
   const categoryData = story?.category ? categories.find(c => c.value === story.category || c.label === story.category) : null;
   const tripTypeData = story?.tripType ? tripTypes.find(t => t.value === story.tripType || t.label === story.tripType) : null;
   const difficultyData = story?.difficulty ? difficulties.find(d => d.value === story.difficulty || d.label === story.difficulty) : null;
@@ -325,7 +328,6 @@ export default function StoryDetail() {
 
       <motion.div className="fixed top-0 left-0 right-0 h-1.5 z-[100] bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 origin-left" style={{ scaleX }} />
 
-      {/* TOP NAV BUTTONS */}
       <div className="fixed top-6 left-0 right-0 px-4 md:px-8 z-[90] flex justify-between items-center pointer-events-none w-full max-w-[100vw] overflow-x-hidden">
           <button onClick={() => navigate(-1)} className="pointer-events-auto p-3 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 text-white hover:bg-black/40 hover:scale-105 transition-all shadow-lg group">
             <ArrowLeft size={24} className="group-hover:-translate-x-1 transition-transform"/>
@@ -342,9 +344,7 @@ export default function StoryDetail() {
       {isAuthorView && (
           <div className="max-w-7xl mx-auto px-4 mt-24 mb-4">
               <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-4 text-center md:text-left">
-                  <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
-                      <AlertTriangle size={24} className="text-red-500"/>
-                  </div>
+                  <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center shrink-0"><AlertTriangle size={24} className="text-red-500"/></div>
                   <div className="flex-1">
                       <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">Admin Requested Changes</h3>
                       <p className="text-slate-600 dark:text-slate-300 text-sm">Please review the flagged sections below.</p>
@@ -365,7 +365,6 @@ export default function StoryDetail() {
         </div>
       )}
 
-      {/* --- HERO SECTION --- */}
       <div className="relative h-[85vh] md:h-[95vh] w-full bg-slate-900 overflow-hidden group">
         <ReviewSection id="coverImage" label="Cover Image" className="w-full h-full absolute inset-0" flagPosition="top-24 right-4">
             {story.coverImage ? (
@@ -383,7 +382,6 @@ export default function StoryDetail() {
                     </div>
                 </ReviewSection>
 
-                {/* ⚡ Responsive Font Size Fix */}
                 <h1 className="text-3xl md:text-6xl lg:text-8xl font-black text-white leading-[1.1] md:leading-[0.9] tracking-tight drop-shadow-2xl break-words max-w-full">
                     {story.title}
                 </h1>
@@ -415,10 +413,8 @@ export default function StoryDetail() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-10 mt-0 lg:-mt-24">
-        {/* ⚡ RESPONSIVE GRID: Stack on Mobile/Tablet, Split on Desktop */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
             
-            {/* LEFT COLUMN (Author/Stats) - Sticky only on Desktop */}
             <div className="lg:col-span-4 space-y-6 md:space-y-8 h-fit lg:sticky lg:top-32 mt-6 lg:mt-32 order-1 lg:order-none">
                 <div className="bg-white dark:bg-[#151b2b] p-5 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] shadow-2xl border border-slate-100 dark:border-white/5 relative transition-colors duration-300">
                     <div className="flex items-center gap-3 md:gap-5 mb-6 md:mb-8">
@@ -439,10 +435,16 @@ export default function StoryDetail() {
                             <div><div className="text-[10px] font-bold text-slate-400 uppercase">Cost</div><div className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight">₹{story.totalCost || "0"}</div></div>
                         </ReviewSection>
                     </div>
-                    <div className="flex gap-2 md:gap-4">
-                        <button onClick={handleLike} className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs md:text-base ${hasLiked ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-500" : "bg-slate-100 dark:bg-white/5 text-slate-900 dark:text-white"}`}><Heart size={16} className={hasLiked ? "fill-current" : ""} /> <span>{hasLiked ? "Liked" : "Like"}</span><span className="opacity-70 text-xs">{likeCount}</span></button>
-                        <button onClick={handleShare} className="flex-1 py-3 rounded-xl bg-[#0B0F19] dark:bg-white text-white dark:text-[#0B0F19] font-bold flex items-center justify-center gap-2 text-xs md:text-base"><Share2 size={16}/> <span>Share</span>{shareCount > 0 && <span className="text-xs bg-white/20 px-1.5 rounded">{shareCount}</span>}</button>
+                    
+                    {/* 🎁 ACTION BUTTONS (GIFT ADDED) */}
+                    <div className="flex gap-2 md:gap-3">
+                        <button onClick={handleLike} className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs md:text-sm ${hasLiked ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-500" : "bg-slate-100 dark:bg-white/5 text-slate-900 dark:text-white"}`}><Heart size={16} className={hasLiked ? "fill-current" : ""} /> <span>{hasLiked ? "Liked" : "Like"}</span></button>
+                        
+                        <button onClick={handleGift} className="flex-1 py-3 rounded-xl bg-gradient-to-tr from-yellow-500 to-orange-500 text-white font-bold flex items-center justify-center gap-2 text-xs md:text-sm shadow-lg shadow-orange-500/20 hover:scale-[1.02] transition-transform"><Gift size={16}/> Gift</button>
+
+                        <button onClick={handleShare} className="flex-1 py-3 rounded-xl bg-[#0B0F19] dark:bg-white text-white dark:text-[#0B0F19] font-bold flex items-center justify-center gap-2 text-xs md:text-sm"><Share2 size={16}/> Share</button>
                     </div>
+
                 </div>
                 {(story.aboutPlace || story.specialNote) && (<div className="space-y-4">
                     {story.aboutPlace && (<ReviewSection id="aboutPlace" label="About"><div className="bg-orange-50/50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-500/10 p-5 rounded-2xl"><div className="flex items-center gap-2 text-orange-700 font-bold mb-2"><Info size={18}/> About</div><p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{story.aboutPlace}</p></div></ReviewSection>)}
@@ -450,7 +452,6 @@ export default function StoryDetail() {
                 </div>)}
             </div>
 
-            {/* RIGHT COLUMN (Content) */}
             <div className="lg:col-span-8 space-y-8 md:space-y-12 lg:mt-32 order-2 lg:order-none">
                 {days.map((day, i) => (
                     <ReviewSection key={i} id={`day_${day.dayNumber}`} label={`Day ${day.dayNumber}`}>
@@ -481,7 +482,6 @@ export default function StoryDetail() {
             </div>
         </div>
 
-        {/* --- 🛡️ VIDEO SECTION --- */}
         {story.youtubeLink && getYoutubeId(story.youtubeLink) && (
             <ReviewSection id="youtubeLink" label="YouTube Video" className="mt-20 md:mt-24 max-w-5xl mx-auto w-full">
                 <div className="flex items-center gap-4 mb-6 md:mb-8 justify-center"><span className="w-8 md:w-16 h-1 bg-red-600 rounded-full"/><h3 className="text-xl md:text-4xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">The Experience</h3><span className="w-8 md:w-16 h-1 bg-red-600 rounded-full"/></div>
@@ -491,7 +491,6 @@ export default function StoryDetail() {
             </ReviewSection>
         )}
 
-        {/* --- GALLERY GRID (Responsive Columns) --- */}
         {fullGallery.length > 0 && (
             <ReviewSection id="gallery" label="Photo Gallery" className="mt-24 md:mt-32 max-w-[1400px] mx-auto px-0 md:px-6">
                 <div className="flex items-center justify-between mb-6 px-4 md:px-0"><h3 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">Visual Diary</h3><span className="text-slate-500 font-medium text-xs md:text-base">{fullGallery.length} Photos</span></div>
@@ -506,7 +505,6 @@ export default function StoryDetail() {
             </ReviewSection>
         )}
 
-        {/* --- COMMENTS SECTION --- */}
         <div className="mt-24 md:mt-32 max-w-4xl mx-auto px-4 md:px-6 border-t border-slate-200 dark:border-white/10 pt-16">
             <h3 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mb-8">Discussion ({comments.length})</h3>
             <div className="bg-white dark:bg-[#151b2b] p-3 rounded-2xl md:rounded-3xl border border-slate-200 dark:border-white/5 shadow-lg mb-10 md:mb-12 flex flex-col md:flex-row gap-4 items-start">
@@ -529,8 +527,21 @@ export default function StoryDetail() {
       </div>
 
       {lightboxIndex !== -1 && <GallerySlider images={fullGallery} initialIndex={lightboxIndex} onClose={() => setLightboxIndex(-1)} />}
+      
+      {/* 🎁 THE GIFT MODAL */}
+      <AnimatePresence>
+        {showGiftModal && (
+            <GiftModal 
+                isOpen={showGiftModal} 
+                onClose={() => setShowGiftModal(false)}
+                authorId={story.authorId}
+                authorName={story.authorName}
+                storyId={story.id}
+            />
+        )}
+      </AnimatePresence>
 
-      {/* 🛡️ RESPONSIVE ADMIN FOOTER */}
+      {/* 🛡️ ADMIN FOOTER */}
       {isAdminView && (
         <motion.div initial={{ y: 100 }} animate={{ y: 0 }} className="fixed bottom-0 left-0 w-full p-3 md:p-4 z-[80] bg-[#111625]/95 backdrop-blur-xl border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-3">
             <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
@@ -538,7 +549,6 @@ export default function StoryDetail() {
                     {hasIssues ? <AlertTriangle size={16}/> : <Check size={16}/>}
                     <span>{hasIssues ? `${issuesCount} Issues` : "Clear"}</span>
                 </div>
-                {hasIssues && <span className="text-xs text-slate-500 hidden md:inline">Authors will see flagged notes.</span>}
             </div>
             <div className="flex gap-2 w-full md:w-auto">
                 <button onClick={() => setConfirmAction('return')} disabled={!hasIssues || isSubmittingReview} className="flex-1 md:flex-none px-4 py-3 rounded-xl font-bold border text-xs md:text-sm bg-slate-800 text-slate-300 border-white/10 hover:bg-slate-700 disabled:opacity-50">Request Changes</button>
@@ -553,7 +563,6 @@ export default function StoryDetail() {
           </motion.div>
       )}
 
-      {/* CONFIRM MODAL */}
       <AnimatePresence>
         {confirmAction && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
@@ -572,7 +581,7 @@ export default function StoryDetail() {
   );
 }
 
-// 🛡️ FULLY RESPONSIVE REVIEW POPUP (Centered Modal on Mobile)
+// 🛡️ SUB-COMPONENTS (Kept same for stability)
 const ReviewSection = ({ id, label, children, className, flagPosition = "-right-3 -top-3" }) => {
     const { isAdminView, isAuthorView, feedback, toggleFeedback, isResubmission } = useContext(ReviewContext);
     const [isOpen, setIsOpen] = useState(false);

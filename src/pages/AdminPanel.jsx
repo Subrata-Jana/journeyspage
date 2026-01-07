@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom"; 
 import { 
   collection, query, getDocs, doc, orderBy, deleteDoc, setDoc, getDoc, onSnapshot, updateDoc 
@@ -6,15 +6,20 @@ import {
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { db, auth, storage } from "../services/firebase";
+
+// 1. SAFE IMPORTS: We alias 'History' to 'HistoryIcon' to prevent the crash
 import { 
   ShieldAlert, Layout, MapPin, Tag, Zap, 
   Award, List, Gem, Edit2, Trash2, Save, 
   Plus, Search, X, Gift, LogOut, Sun, Moon, User, 
   CheckCircle, RotateCcw, Eye, Clock, Image as ImageIcon, UploadCloud, Menu,
-  AlertCircle, ArrowUp, ArrowDown, Filter, History
+  AlertCircle, ArrowUp, ArrowDown, ChevronDown, HelpCircle, History as HistoryIcon, Telescope
 } from "lucide-react";
-import toast, { Toaster } from "react-hot-toast";
+
+// 2. DYNAMIC IMPORT for the icon picker
 import * as LucideIcons from "lucide-react"; 
+
+import toast, { Toaster } from "react-hot-toast";
 import { formatDistanceToNow } from 'date-fns';
 import { sendNotification } from "../services/notificationService";
 
@@ -35,16 +40,16 @@ const ICON_LIST = [
   "Backpack", "Briefcase", "Key", "Landmark", "Building", "LifeBuoy",
   "Camera", "Image", "Video", "Film", "Music", "Mic", "Headphones", "Speaker",
   "Palette", "Brush", "PenTool", "Book", "BookOpen", "Gamepad", "Puzzle",
-  "Dumbbell", "Footprints", "Fish", "Binoculars",
+  "Dumbbell", "Footprints", "Fish", "Binoculars", "Glasses", "Scroll", "Watch",
   "Coffee", "Utensils", "Pizza", "Beer", "Wine", "Martini", "CupSoda", 
   "Cake", "Apple", "Carrot", "Soup", "IceCream",
   "Star", "Heart", "Zap", "Trophy", "Award", "Medal", "Crown", "Gem", 
   "Diamond", "Shield", "Target", "Flag", "Sparkles", "Rocket", "Ghost", 
   "Skull", "ThumbsUp", "Smile", "Meh", "Frown", "Coins", "CreditCard",
   "Check", "CheckCircle", "X", "XCircle", "AlertCircle", "Info", "HelpCircle", 
-  "User", "Users", "UserPlus", "Lock", "Unlock", "Eye", "EyeOff", 
+  "User", "Users", "UserPlus", "Lock", "Unlock", "Eye", "EyeOff",
   "Settings", "Filter", "Search", "Tag", "Link", "Home", "Bell", "Calendar", 
-  "Clock", "Watch", "Gift", "ShoppingBag", "DollarSign", "Droplet", "Hexagon", "Circle"
+  "Clock", "Gift", "ShoppingBag", "DollarSign", "Droplet", "Hexagon", "Circle", "Shell", "Telescope"
 ];
 
 const COLOR_PALETTE = [
@@ -182,7 +187,6 @@ function SidebarItem({ icon, label, active, onClick, isDark }) {
     )
 }
 
-// --- 🛡️ UPGRADED STORY MODERATION (FIXED) ---
 function StoryModeration({ isDark }) {
     const [allStories, setAllStories] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -191,7 +195,6 @@ function StoryModeration({ isDark }) {
     const [sortOrder, setSortOrder] = useState("desc"); 
     const navigate = useNavigate();
 
-    // ⚡ STATE FOR RETURN MODAL
     const [showReturnModal, setShowReturnModal] = useState(false);
     const [storyToReturn, setStoryToReturn] = useState(null);
     const [returnReason, setReturnReason] = useState(""); 
@@ -199,8 +202,6 @@ function StoryModeration({ isDark }) {
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            // 🛡️ SECURITY FIX: Explicitly check email before fetching
-            // This prevents the "Permission Denied" error loop
             if (!user || user.email !== "sjsubratajana@gmail.com") {
                 setLoading(false);
                 return; 
@@ -217,7 +218,6 @@ function StoryModeration({ isDark }) {
                 setAllStories(fetched);
             } catch (error) {
                 console.error("Error fetching stories:", error);
-                // toast.error("Could not load stories"); // Suppress toast on initial load to keep UI clean
             } finally {
                 setLoading(false);
             }
@@ -226,7 +226,6 @@ function StoryModeration({ isDark }) {
         return () => unsubscribe();
     }, [sortOrder]); 
 
-    // ⚡ FILTER & SEARCH LOGIC
     const filteredStories = useMemo(() => {
         let stories = allStories;
 
@@ -250,7 +249,6 @@ function StoryModeration({ isDark }) {
         return stories;
     }, [allStories, filterStatus, searchQuery]);
 
-    // ⚡ STATS CALCULATION
     const stats = useMemo(() => {
         const pending = allStories.filter(s => s.published && s.status !== 'approved' && s.status !== 'returned').length;
         const approved = allStories.filter(s => s.status === 'approved').length;
@@ -422,7 +420,7 @@ function StoryModeration({ isDark }) {
                                                 <div className={`font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{story.title || "Untitled"}</div>
                                                 {story.revisionCount > 0 && (
                                                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-white flex items-center gap-1" title="Revision Count">
-                                                        <History size={10}/> v{story.revisionCount}
+                                                        <HistoryIcon size={10}/> v{story.revisionCount}
                                                     </span>
                                                 )}
                                             </div>
@@ -454,14 +452,14 @@ function StoryModeration({ isDark }) {
                                     <div className="flex flex-col items-start gap-1">
                                         <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide inline-flex items-center gap-1.5
                                             ${story.status === 'approved' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
-                                              story.status === 'returned' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 
-                                              story.published ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
-                                              'bg-slate-500/10 text-slate-500 border border-slate-500/20'}
-                                        `}>
-                                            {story.status === 'approved' && <CheckCircle size={12}/>}
-                                            {story.status === 'returned' && <RotateCcw size={12}/>}
-                                            {story.published && story.status !== 'approved' && story.status !== 'returned' && <Clock size={12}/>}
-                                            {story.status || (story.published ? "Pending" : "Draft")}
+                                                story.status === 'returned' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 
+                                                story.published ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
+                                                'bg-slate-500/10 text-slate-500 border border-slate-500/20'}
+                                            `}>
+                                                {story.status === 'approved' && <CheckCircle size={12}/>}
+                                                {story.status === 'returned' && <RotateCcw size={12}/>}
+                                                {story.published && story.status !== 'approved' && story.status !== 'returned' && <Clock size={12}/>}
+                                                {story.status || (story.published ? "Pending" : "Draft")}
                                         </span>
                                         {story.published && story.status !== 'approved' && story.status !== 'returned' && (
                                             <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1 ml-1">
@@ -518,8 +516,8 @@ function StoryModeration({ isDark }) {
                             
                             <p className="text-slate-400 text-sm mb-6 leading-relaxed">
                                 {issueCount > 0 
-                                  ? `You have flagged ${issueCount} specific issue${issueCount !== 1 ? 's' : ''}.` 
-                                  : "No specific items flagged."} 
+                                    ? `You have flagged ${issueCount} specific issue${issueCount !== 1 ? 's' : ''}.` 
+                                    : "No specific items flagged."} 
                                 <br/>Add a note below (optional if flagged).
                             </p>
 
@@ -553,9 +551,6 @@ function StoryModeration({ isDark }) {
         </div>
     ); 
 }
-
-// --- SUB COMPONENTS (LOGO, LOOT, META) ---
-// Kept exactly as provided to maintain full functionality
 
 function LogoManager({ isDark }) {
     const [logoUrl, setLogoUrl] = useState("");
@@ -637,9 +632,16 @@ function LogoManager({ isDark }) {
 function ManageLoot({ isDark }) {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [formData, setFormData] = useState({ name: "", category: "plane", rarity: "Common", icon: "Circle" });
+    const [editingId, setEditingId] = useState(null);
+    
+    // Default State
+    const defaultForm = { name: "", category: "plane", rarity: "Common", icon: "Circle", expiryHours: 24, description: "" };
+    const [formData, setFormData] = useState(defaultForm);
+    
     const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
     const [iconSearch, setIconSearch] = useState("");
+    
+    const pickerRef = useRef(null);
   
     useEffect(() => {
       const unsub = onSnapshot(doc(db, "meta", "loot"), (docSnap) => {
@@ -648,6 +650,37 @@ function ManageLoot({ isDark }) {
       });
       return () => unsub();
     }, []);
+
+    useEffect(() => {
+        function handleClickOutside(event) {
+            if (pickerRef.current && !pickerRef.current.contains(event.target)) {
+                setIsIconPickerOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [pickerRef]);
+
+    const handleEdit = (item) => {
+        setFormData({
+            name: item.name,
+            category: item.category,
+            rarity: item.rarity,
+            icon: item.icon || "Circle",
+            expiryHours: item.expiryHours || 24,
+            description: item.description || ""
+        });
+        setEditingId(item.id);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    // ⚡ CANCEL / CLEAR FUNCTION
+    const handleCancel = () => {
+        setEditingId(null);
+        setFormData(defaultForm);
+    };
   
     const handleSave = async () => {
       if (!formData.name) return toast.error("Enter a name!");
@@ -656,14 +689,30 @@ function ManageLoot({ isDark }) {
       if (formData.rarity === "LEGENDARY") chance = 100;
   
       const newId = formData.name.toLowerCase().replace(/\s+/g, "_");
-      const newItem = { id: newId, name: formData.name, category: formData.category, rarity: formData.rarity, chance: chance, icon: formData.icon };
-      const filtered = items.filter(i => i.id !== newId);
-      const updatedList = [...filtered, newItem];
+      
+      const newItem = { 
+          id: newId, 
+          name: formData.name, 
+          category: formData.category, 
+          rarity: formData.rarity, 
+          chance: chance, 
+          icon: formData.icon,
+          expiryHours: parseInt(formData.expiryHours) || 24,
+          description: formData.description || "A special gift for a special story."
+      };
+
+      let updatedList = items;
+      if (editingId) {
+          updatedList = updatedList.filter(i => i.id !== editingId);
+      }
+      updatedList = updatedList.filter(i => i.id !== newId);
+      updatedList = [...updatedList, newItem];
   
       try {
         await setDoc(doc(db, "meta", "loot"), { items: updatedList });
-        setFormData({ ...formData, name: "" });
-        toast.success("Heirloom Saved!");
+        handleCancel(); // Clear form after save
+        setIsIconPickerOpen(false); 
+        toast.success(editingId ? "Artifact Updated!" : "Artifact Created!");
       } catch (error) {
         toast.error("Error saving.");
       }
@@ -677,8 +726,10 @@ function ManageLoot({ isDark }) {
     };
 
     const renderIcon = (iconName) => {
-        const IconComponent = LucideIcons[iconName] || LucideIcons.HelpCircle;
-        return <IconComponent size={18} />;
+        if (!iconName) return <HelpCircle size={18} />;
+        const IconComponent = LucideIcons[iconName];
+        // If icon exists in library, render it. Otherwise, fallback.
+        return IconComponent ? <IconComponent size={18} /> : <HelpCircle size={18} />;
     };
 
     const filteredIcons = useMemo(() => {
@@ -687,55 +738,86 @@ function ManageLoot({ isDark }) {
     }, [iconSearch]);
 
     const cardClass = isDark ? "bg-[#111625] border-white/5" : "bg-white border-slate-200 shadow-sm";
-    const inputClass = isDark ? "w-full bg-black/20 border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-orange-500 placeholder:text-slate-600" : "w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-900 focus:outline-none focus:border-orange-500 placeholder:text-slate-400";
-    const pickerClass = isDark ? "bg-[#1A1F2E] border-white/10" : "bg-white border-slate-200 shadow-xl";
+    const inputClass = isDark ? "w-full bg-black/20 border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-orange-500 placeholder:text-slate-600 transition-colors" : "w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-900 focus:outline-none focus:border-orange-500 placeholder:text-slate-400 transition-colors";
+    const pickerClass = isDark ? "bg-[#1A1F2E] border-white/10 shadow-black/50" : "bg-white border-slate-200 shadow-xl";
   
     return (
-      <div className="space-y-8 animate-in slide-in-from-right duration-500">
+      <div className="space-y-8 animate-in slide-in-from-right duration-500 pb-20">
          <h2 className={`text-3xl font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
              <Gift className="text-orange-500"/> Manage Heirlooms
          </h2>
   
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-          <div className={`p-6 rounded-2xl border h-fit z-20 ${cardClass}`}>
-            <h2 className={`font-bold mb-6 uppercase text-xs tracking-wider border-b pb-2 ${isDark ? 'text-orange-500 border-white/5' : 'text-orange-600 border-slate-100'}`}>Add / Edit Artifact</h2>
+          <div className={`p-6 rounded-2xl border h-fit z-30 sticky top-6 ${cardClass}`}>
+            <h2 className={`font-bold mb-6 uppercase text-xs tracking-wider border-b pb-2 flex justify-between items-center ${isDark ? 'text-orange-500 border-white/5' : 'text-orange-600 border-slate-100'}`}>
+                <span>{editingId ? "Edit Artifact" : "Add New Artifact"}</span>
+                {editingId && <span className="text-[10px] bg-orange-500/20 text-orange-500 px-2 py-1 rounded">Editing Mode</span>}
+            </h2>
             
             <div className="mb-4">
               <label className="block text-slate-400 text-xs mb-1 font-bold uppercase">Item Name</label>
               <input className={inputClass} placeholder="e.g. Silver Compass" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
             </div>
+
             <div className="mb-4">
-              <label className="block text-slate-400 text-xs mb-1 font-bold uppercase">Source</label>
-              <select className={inputClass} value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})}>
-                <option value="plane" className={isDark ? "bg-[#1A1F2E]" : "bg-white"}>✈️ Paper Plane</option>
-                <option value="boat" className={isDark ? "bg-[#1A1F2E]" : "bg-white"}>⛵ Paper Boat</option>
-                <option value="bottle" className={isDark ? "bg-[#1A1F2E]" : "bg-white"}>🍾 Glass Bottle</option>
-                <option value="lantern" className={isDark ? "bg-[#1A1F2E]" : "bg-white"}>🏮 Sky Lantern</option>
-                <option value="box" className={isDark ? "bg-[#1A1F2E]" : "bg-white"}>📦 Bronze Box</option>
-              </select>
+              <label className="block text-slate-400 text-xs mb-1 font-bold uppercase">Description / Feeling</label>
+              <textarea 
+                rows={2}
+                className={inputClass} 
+                placeholder="e.g. 'May you always find your path.'" 
+                value={formData.description} 
+                onChange={(e) => setFormData({...formData, description: e.target.value})} 
+              />
             </div>
+            
+            <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1 font-bold uppercase">Category</label>
+                  <select className={inputClass} value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})}>
+                    <option value="plane">✈️ Plane</option>
+                    <option value="boat">⛵ Boat</option>
+                    <option value="bottle">🍾 Bottle</option>
+                    <option value="lantern">🏮 Lantern</option>
+                    <option value="box">📦 Box</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1 font-bold uppercase">Rarity</label>
+                  <select className={inputClass} value={formData.rarity} onChange={(e) => setFormData({...formData, rarity: e.target.value})}>
+                    <option value="Common">⚪ Common</option>
+                    <option value="Uncommon">🟢 Uncommon</option>
+                    <option value="LEGENDARY">🟡 LEGENDARY</option>
+                  </select>
+                </div>
+            </div>
+
             <div className="mb-4">
-              <label className="block text-slate-400 text-xs mb-1 font-bold uppercase">Rarity</label>
-              <select className={inputClass} value={formData.rarity} onChange={(e) => setFormData({...formData, rarity: e.target.value})}>
-                <option value="Common" className={isDark ? "bg-[#1A1F2E]" : "bg-white"}>⚪ Common (60%)</option>
-                <option value="Uncommon" className={isDark ? "bg-[#1A1F2E]" : "bg-white"}>🟢 Uncommon (30%)</option>
-                <option value="LEGENDARY" className={isDark ? "bg-[#1A1F2E]" : "bg-white"}>🟡 LEGENDARY (10%)</option>
-              </select>
+              <label className="block text-slate-400 text-xs mb-1 font-bold uppercase">Expires In (Hours)</label>
+              <div className="relative">
+                  <input type="number" min="1" className={inputClass} placeholder="24" value={formData.expiryHours} onChange={(e) => setFormData({...formData, expiryHours: e.target.value})} />
+                  <Clock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"/>
+              </div>
             </div>
-            <div className="mb-6 relative">
+
+            <div className="mb-6 relative" ref={pickerRef}>
               <label className="block text-slate-400 text-xs mb-1 font-bold uppercase">Icon</label>
-              <button onClick={() => { setIsIconPickerOpen(!isIconPickerOpen); setIconSearch(""); }} className={`${inputClass} flex items-center gap-3 text-left`}>
+              <button onClick={() => { setIsIconPickerOpen(!isIconPickerOpen); setIconSearch(""); }} className={`${inputClass} flex items-center gap-3 text-left w-full hover:border-orange-500/50`}>
                   <div className={`p-2 rounded-lg text-orange-400 ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>{renderIcon(formData.icon)}</div>
-                  <span className={isDark ? "text-slate-400" : "text-slate-600"}>{formData.icon}</span>
+                  <span className={`flex-1 ${isDark ? "text-slate-400" : "text-slate-600"}`}>{formData.icon}</span>
+                  <ChevronDown size={16} className={`text-slate-500 transition-transform ${isIconPickerOpen ? 'rotate-180' : ''}`}/>
               </button>
+
               {isIconPickerOpen && (
                 <div className={`absolute top-full left-0 mt-2 w-full border rounded-xl shadow-2xl z-50 overflow-hidden ${pickerClass}`}>
                     <div className={`p-3 border-b sticky top-0 z-10 ${isDark ? 'bg-[#1A1F2E] border-white/5' : 'bg-white border-slate-100'}`}>
-                        <input type="text" autoFocus placeholder="Search..." className={`w-full rounded-lg px-3 py-2 text-sm focus:outline-none ${isDark ? 'bg-black/30 text-white' : 'bg-slate-100 text-slate-900'}`} value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} />
+                        <div className="relative">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/>
+                            <input type="text" autoFocus placeholder="Search icons..." className={`w-full rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 ${isDark ? 'bg-black/30 text-white' : 'bg-slate-100 text-slate-900'}`} value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} />
+                        </div>
                     </div>
-                    <div className="p-2 grid grid-cols-6 gap-2 max-h-48 overflow-y-auto">
+                    <div className="p-2 grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-60 overflow-y-auto custom-scrollbar">
                         {filteredIcons.map(iconName => (
-                            <button key={iconName} onClick={() => { setFormData({...formData, icon: iconName}); setIsIconPickerOpen(false); }} className={`p-2 rounded-lg flex justify-center hover:bg-black/5 ${formData.icon === iconName ? 'bg-orange-500 text-white' : 'text-slate-400'}`} title={iconName}>
+                            <button key={iconName} onClick={() => { setFormData({...formData, icon: iconName}); setIsIconPickerOpen(false); }} className={`p-2 rounded-lg flex flex-col items-center justify-center gap-1 hover:scale-105 transition-all ${formData.icon === iconName ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-400 hover:bg-black/5 dark:hover:bg-white/5'}`} title={iconName}>
                                 {renderIcon(iconName)}
                             </button>
                         ))}
@@ -743,13 +825,28 @@ function ManageLoot({ isDark }) {
                 </div>
               )}
             </div>
-            <button onClick={handleSave} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-xl transition flex justify-center items-center gap-2 shadow-lg shadow-orange-900/20">
-              <Save size={18}/> SAVE HEIRLOOM
-            </button>
+            
+            {/* ⚡ BUTTON GROUP: Cancel is always visible */}
+            <div className="flex gap-2">
+                <button 
+                    onClick={handleCancel} 
+                    className={`flex-1 py-3 rounded-xl font-bold transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'}`}
+                >
+                    {editingId ? "Cancel" : "Clear"}
+                </button>
+                <button 
+                    onClick={handleSave} 
+                    className="flex-[2] bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-xl transition flex justify-center items-center gap-2 shadow-lg shadow-orange-900/20 active:scale-95"
+                >
+                    <Save size={18}/> {editingId ? "Update" : "Save"}
+                </button>
+            </div>
           </div>
   
+          {/* DISPLAY LIST */}
           <div className="xl:col-span-2 space-y-6">
-              {loading && <p>Loading...</p>}
+              {loading && <div className="p-10 text-center text-slate-500">Loading treasures...</div>}
+              
               {['plane', 'boat', 'bottle', 'lantern', 'box'].map(cat => {
                 const catItems = items.filter(i => i.category === cat);
                 if (catItems.length === 0) return null;
@@ -764,15 +861,31 @@ function ManageLoot({ isDark }) {
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                           {catItems.map(item => (
-                              <div key={item.id} className={`flex items-center gap-3 p-3 rounded-xl border relative group ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
-                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0
-                                      {item.rarity === 'Common' ? 'bg-slate-500' : item.rarity === 'Uncommon' ? 'bg-emerald-600' : 'bg-yellow-600 shadow-[0_0_15px_rgba(234,179,8,0.3)]'}
+                              <div key={item.id} className={`flex items-center gap-3 p-3 rounded-xl border relative group transition-all hover:scale-[1.02] ${isDark ? 'bg-black/20 border-white/5 hover:bg-black/40' : 'bg-slate-50 border-slate-100 hover:bg-white hover:shadow-md'}`}>
+                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0 shadow-lg
+                                      ${item.rarity === 'Common' ? 'bg-slate-500' : item.rarity === 'Uncommon' ? 'bg-emerald-600' : 'bg-yellow-600 shadow-yellow-500/20'}
                                   `}>{renderIcon(item.icon)}</div>
                                   <div className="flex-1 min-w-0">
                                       <p className={`font-bold text-sm truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>{item.name}</p>
-                                      <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">{item.rarity}</p>
+                                      <p className="text-[10px] text-slate-500 truncate">{item.description}</p>
+                                      <div className="flex items-center gap-2 mt-0.5">
+                                          <span className={`text-[9px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider ${isDark ? 'bg-white/10 text-slate-400' : 'bg-slate-200 text-slate-600'}`}>{item.rarity}</span>
+                                          {item.expiryHours && (
+                                              <p className="text-[9px] text-orange-400 font-mono flex items-center gap-0.5 bg-orange-500/10 px-1.5 py-0.5 rounded" title="Time to Live">
+                                                  <Clock size={10}/> {item.expiryHours}h
+                                              </p>
+                                          )}
+                                      </div>
                                   </div>
-                                  <button onClick={() => handleDelete(item.id)} className="absolute top-2 right-2 text-red-500 opacity-0 group-hover:opacity-100 hover:bg-red-500/10 p-1 rounded transition"><Trash2 size={14} /></button>
+                                  
+                                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button onClick={() => handleEdit(item)} className="text-blue-400 hover:bg-blue-500/10 p-1.5 rounded-lg transition-all" title="Edit">
+                                          <Edit2 size={14} />
+                                      </button>
+                                      <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:bg-red-500/10 p-1.5 rounded-lg transition-all" title="Delete">
+                                          <Trash2 size={14} />
+                                      </button>
+                                  </div>
                               </div>
                           ))}
                       </div>
@@ -831,7 +944,13 @@ function MetaEditor({ title, docId, fields, isDark }) {
 
     const handleEdit = (item) => { setNewItem(item); setEditingId(item.id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
     const filteredIcons = useMemo(() => { if (!iconSearch) return ICON_LIST; return ICON_LIST.filter(icon => icon.toLowerCase().includes(iconSearch.toLowerCase())); }, [iconSearch]);
-    const renderIcon = (iconName) => { if (!iconName) return <Plus size={20} />; const IconComponent = LucideIcons[iconName]; return IconComponent ? <IconComponent size={20} /> : <Plus size={20} />; };
+    
+    // ⚡ FIX: Same Safe Rendering Here
+    const renderIcon = (iconName) => { 
+        if (!iconName) return <Plus size={20} />; 
+        const IconComponent = LucideIcons[iconName]; 
+        return IconComponent ? <IconComponent size={20} /> : <Plus size={20} />; 
+    };
 
     const cardClass = isDark ? "bg-[#111625] border-white/5" : "bg-white border-slate-200 shadow-sm";
     const inputClass = isDark ? "w-full bg-black/20 border border-white/10 rounded-xl p-3 text-white focus:border-orange-500 outline-none placeholder:text-slate-600" : "w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-900 focus:border-orange-500 outline-none placeholder:text-slate-400";

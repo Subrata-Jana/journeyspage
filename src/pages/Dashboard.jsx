@@ -20,10 +20,13 @@ import Feed from "../components/Feed";
 import { useGamification, RenderIcon } from "../hooks/useGamification";
 import LevelBadge from "../components/premium/LevelBadge";
 import LevelProgress from "../components/premium/LevelProgress";
+import { processUserSession } from "../services/gamificationService";
+import GiftOverlay from "../components/gamification/GiftOverlay";
 
 export default function Dashboard() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
+  
 
   // --- VIEW STATE ---
   const [currentView, setCurrentView] = useState("overview");
@@ -67,6 +70,13 @@ export default function Dashboard() {
     });
     return () => unsub();
   }, []);
+
+  // 🚀 IGNITION: Check Daily Rewards & Clean Wallet on Load
+  useEffect(() => {
+    if (user?.uid) {
+      processUserSession(user.uid);
+    }
+  }, [user]);
 
   // --- 1. USER SYNC & DAILY BONUS ---
   useEffect(() => {
@@ -211,7 +221,8 @@ export default function Dashboard() {
   if (loading || gameLoading) return <div className="min-h-screen bg-[#0B0F19] flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500" /></div>;
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-[#0B0F19] text-slate-900 dark:text-white overflow-hidden font-sans transition-colors duration-300">
+    <div className="flex h-screen bg-slate-50 dark:bg-[#0B0F19] text-slate-900 dark:text-white overflow-hidden font-sans transition-colors duration-300"> 
+    <GiftOverlay />
       <Toaster position="bottom-right" toastOptions={{ style: { background: '#1e293b', color: '#fff', border: '1px solid #334155' } }} />
 
       {/* SIDEBAR */}

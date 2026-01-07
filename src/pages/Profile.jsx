@@ -7,10 +7,12 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { 
   Camera, MapPin, Award, Edit2, Globe, BookOpen, Heart, 
   Share2, Shield, Save, User, Link as LinkIcon, ArrowLeft,
-  Facebook, Instagram, Youtube, Twitter, Gem, Lock, Eye, Copy
+  Facebook, Instagram, Youtube, Twitter, Gem, Lock, Eye, Clock, 
+  AlertTriangle, Gift, Briefcase
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from 'react-hot-toast';
+import { formatDistanceToNow } from 'date-fns';
 
 // ⚡ PREMIUM IMPORTS
 import { useGamification, RenderIcon } from "../hooks/useGamification";
@@ -22,6 +24,7 @@ export default function Profile() {
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("wallet"); // 'wallet' | 'showcase'
   
   // Profile Data
   const [profileData, setProfileData] = useState({
@@ -37,14 +40,15 @@ export default function Profile() {
     twitter: "",
     xp: 0,
     badges: [],
-    inventory: [] 
+    inventory: [], // The Wallet (Active/Expiring items)
+    trophies: []   // The Showcase (Received items)
   });
 
   // Stats
   const [stats, setStats] = useState({ stories: 0, likes: 0, views: 0, shares: 0, countries: 0 });
 
   // ⚡ INIT GAMIFICATION HOOK
-  const { currentRank, badges, loot, loading: gameLoading } = useGamification(profileData.xp, profileData.badges, profileData.inventory);
+  const { currentRank, badges, loading: gameLoading } = useGamification(profileData.xp, profileData.badges, []);
 
   // Load Data
   useEffect(() => {
@@ -70,7 +74,8 @@ export default function Profile() {
             twitter: data.twitter || "",
             xp: data.xp || 0,
             badges: data.badges || [],
-            inventory: data.inventory || []
+            inventory: data.inventory || [],
+            trophies: data.trophies || [] // New field for received gifts
           });
         } else {
             setProfileData(prev => ({
@@ -81,7 +86,7 @@ export default function Profile() {
             }));
         }
 
-        // 2. Fetch Stories for Stats (Math Fix Applied)
+        // 2. Fetch Stories for Stats
         const q = query(collection(db, "stories"), where("authorId", "==", user.uid));
         const snap = await getDocs(q);
         
@@ -90,23 +95,14 @@ export default function Profile() {
 
         snap.forEach(doc => {
           const d = doc.data();
-          
-          // 🛠️ FIX: Views
           totalViews += (d.views || 0);
           
-          // 🛠️ FIX: Likes (Number vs Array)
-          const l = typeof d.likeCount === 'number' 
-              ? d.likeCount 
-              : (Array.isArray(d.likes) ? d.likes.length : 0);
+          const l = typeof d.likeCount === 'number' ? d.likeCount : (Array.isArray(d.likes) ? d.likes.length : 0);
           totalLikes += l;
 
-          // 🛠️ FIX: Shares (Number vs Array)
-          const s = typeof d.shareCount === 'number' 
-              ? d.shareCount 
-              : (Array.isArray(d.sharedBy) ? d.sharedBy.length : 0);
+          const s = typeof d.shareCount === 'number' ? d.shareCount : (Array.isArray(d.sharedBy) ? d.sharedBy.length : 0);
           totalShares += s;
 
-          // Location
           if (d.locationData && d.locationData.value && d.locationData.value.place_id) {
              uniqueLocations.add(d.locationData.value.place_id);
           } else if (d.location) {
@@ -118,7 +114,7 @@ export default function Profile() {
             stories: snap.size, 
             views: totalViews, 
             likes: totalLikes, 
-            shares: totalShares, // 🆕 Added
+            shares: totalShares, 
             countries: uniqueLocations.size 
         });
 
@@ -132,7 +128,7 @@ export default function Profile() {
     fetchData();
   }, [user]);
 
-  // Save Helper: Auto-prepend HTTPS
+  // Helper: Clean URLs
   const cleanUrl = (url) => {
       if (!url) return "";
       if (!/^https?:\/\//i.test(url)) return `https://${url}`;
@@ -152,7 +148,7 @@ export default function Profile() {
           updatedAt: new Date()
       };
       
-      setProfileData(updatedData); // Update local state immediately
+      setProfileData(updatedData);
       await setDoc(doc(db, "users", user.uid), updatedData, { merge: true });
       setIsEditing(false);
       toast.success("Profile updated!");
@@ -180,11 +176,11 @@ export default function Profile() {
     }
   };
 
-  // 🆕 Share Profile Function
+  // Share Profile
   const handleShareProfile = () => {
       const url = `${window.location.origin}/profile/${user.uid}`;
       navigator.clipboard.writeText(url);
-      toast.success("Profile link copied to clipboard!");
+      toast.success("Profile link copied!");
   };
 
   if (loading || gameLoading) return <div className="min-h-screen bg-[#0B0F19] text-white flex items-center justify-center">Loading Passport...</div>;
@@ -218,12 +214,9 @@ export default function Profile() {
             <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-1.5 bg-gradient-to-tr from-orange-500 to-purple-600 shadow-2xl relative z-10">
               <img src={profileData.photoURL || `https://ui-avatars.com/api/?name=${profileData.name}`} alt="Profile" className="w-full h-full rounded-full object-cover bg-slate-800 border-4 border-[#0B0F19]" />
             </div>
-            
-            {/* ⚡ DYNAMIC RANK BADGE */}
             <div className="absolute bottom-2 -right-2 z-20">
                 <LevelBadge rank={currentRank} size="lg" />
             </div>
-
             <label className="absolute bottom-2 left-2 bg-orange-600 text-white p-2 rounded-full cursor-pointer shadow-lg hover:scale-110 transition-transform z-20 border border-black">
               <Camera size={16} />
               <input type="file" hidden accept="image/*" onChange={(e) => handleImageUpload(e, 'photoURL')} />
@@ -260,35 +253,29 @@ export default function Profile() {
                   </div>
                 </div>
 
-                {/* ⚡ DYNAMIC LEVEL PROGRESS */}
                 <div className="max-w-md mt-2">
                     <LevelProgress currentXP={profileData.xp} rankData={currentRank} />
                 </div>
-
               </div>
 
-              {/* Action Buttons */}
               <div className="flex gap-3 self-start md:self-center">
                 {isEditing ? (
                   <button onClick={handleSave} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-emerald-900/20"><Save size={18}/> Save</button>
                 ) : (
                   <>
                     <button onClick={() => setIsEditing(true)} className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all backdrop-blur-md"><Edit2 size={18}/> Edit</button>
-                    {/* 🆕 SHARE PROFILE BUTTON */}
                     <button onClick={handleShareProfile} className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-3 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all backdrop-blur-md" title="Share Profile"><Share2 size={18}/></button>
                   </>
                 )}
               </div>
             </div>
 
-            {/* Bio */}
             {isEditing ? (
               <textarea value={profileData.bio} onChange={(e) => setProfileData({...profileData, bio: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-slate-300 mt-2 focus:border-orange-500/50 outline-none resize-none" rows={3} placeholder="Tell the world about your travels..." />
             ) : (
               <p className="text-lg text-slate-300 max-w-2xl leading-relaxed">{profileData.bio}</p>
             )}
 
-            {/* SOCIAL LINKS */}
             {isEditing ? (
                 <div className="bg-white/5 border border-white/5 rounded-xl p-4 mt-4 animate-in fade-in slide-in-from-top-2">
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Social Links</h3>
@@ -310,18 +297,17 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* ⚡ FIXED STATS GRID (5 Columns) */}
+        {/* ⚡ STATS GRID */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-12">
           <StatBox label="Stories Written" value={stats.stories} icon={<BookOpen className="text-blue-400" />} />
           <StatBox label="Places Visited" value={stats.countries} icon={<Globe className="text-emerald-400" />} />
           <StatBox label="Total Likes" value={stats.likes} icon={<Heart className="text-red-400" />} />
           <StatBox label="Total Views" value={stats.views} icon={<Eye className="text-purple-400" />} />
-          {/* 🆕 SHARES STAT */}
           <StatBox label="Total Shares" value={stats.shares} icon={<Share2 className="text-orange-400" />} />
         </div>
 
-        {/* ⚡ DYNAMIC ACHIEVEMENTS & TREASURES */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* ⚡ ACHIEVEMENTS (LEFT COL) */}
             <div className="lg:col-span-2 space-y-6">
                 <h2 className="text-xl font-bold flex items-center gap-2 text-white"><Award className="text-yellow-500" /> Achievements</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -336,22 +322,126 @@ export default function Profile() {
                 </div>
             </div>
             
+            {/* ⚡ DYNAMIC WALLET & SHOWCASE (RIGHT COL) */}
             <div className="space-y-6">
-                <h2 className="text-xl font-bold flex items-center gap-2 text-white"><Gem className="text-purple-500" /> Artifact Collection</h2>
-                <div className="bg-[#111625]/60 border border-white/5 rounded-2xl p-6 relative overflow-hidden group">
-                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-transparent opacity-50" />
-                    <div className="grid grid-cols-3 gap-3 relative z-10">
-                        {loot.map(item => (
-                            <div key={item.id} title={item.isUnlocked ? item.name : "Locked"} className={`aspect-square rounded-lg border flex flex-col items-center justify-center transition-colors ${item.isUnlocked ? 'bg-purple-500/20 border-purple-500/50 text-purple-300' : 'bg-black/40 border-white/5 text-white/10'}`}>
-                                <RenderIcon iconName={item.icon} size={20} />
-                                {item.isUnlocked && <span className="text-[8px] mt-1 font-bold truncate max-w-full px-1">{item.name}</span>}
-                            </div>
-                        ))}
-                        {loot.length === 0 && <p className="text-slate-500 text-xs col-span-3 text-center">No artifacts discovered yet.</p>}
-                    </div>
-                    {loot.every(l => !l.isUnlocked) && (
-                        <div className="mt-4 text-center"><p className="text-sm font-medium text-white">Collection Locked</p><p className="text-xs text-slate-500">Discover hidden items in stories to unlock.</p></div>
-                    )}
+                {/* TABS */}
+                <div className="flex bg-[#111625] p-1 rounded-xl border border-white/10">
+                    <button 
+                        onClick={() => setActiveTab("wallet")} 
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'wallet' ? 'bg-white/10 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                        <Briefcase size={14}/> My Wallet
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab("showcase")} 
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'showcase' ? 'bg-yellow-500/10 text-yellow-500 shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                        <Gem size={14}/> Showcase
+                    </button>
+                </div>
+
+                <div className="bg-[#111625]/60 border border-white/5 rounded-2xl p-6 relative overflow-hidden min-h-[300px]">
+                    <AnimatePresence mode="wait">
+                        {activeTab === 'wallet' ? (
+                            <motion.div 
+                                key="wallet"
+                                initial={{ opacity: 0, x: -20 }} 
+                                animate={{ opacity: 1, x: 0 }} 
+                                exit={{ opacity: 0, x: 20 }}
+                                className="space-y-4"
+                            >
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-bold text-white flex items-center gap-2"><Briefcase size={16} className="text-blue-400"/> Active Items</h3>
+                                    <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-1 rounded-full">{profileData.inventory.length} items</span>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-3">
+                                    {profileData.inventory.map((item, idx) => {
+                                        // Handle legacy strings vs new objects
+                                        const isLegacy = typeof item === 'string';
+                                        const name = isLegacy ? item : item.name;
+                                        const icon = isLegacy ? "Circle" : item.icon;
+                                        const rarity = isLegacy ? "Common" : item.rarity;
+                                        
+                                        // Expiry Logic
+                                        let timeLeft = null;
+                                        let isExpiringSoon = false;
+                                        if (!isLegacy && item.expiresAt) {
+                                            const expiry = new Date(item.expiresAt);
+                                            const now = new Date();
+                                            if (expiry > now) {
+                                                timeLeft = formatDistanceToNow(expiry); // e.g. "2 hours"
+                                                const hoursLeft = (expiry - now) / 36e5;
+                                                isExpiringSoon = hoursLeft < 3;
+                                            } else {
+                                                timeLeft = "Expired";
+                                            }
+                                        }
+
+                                        return (
+                                            <div key={idx} className={`p-3 rounded-xl border flex flex-col items-center text-center relative group overflow-hidden
+                                                ${rarity === 'LEGENDARY' ? 'bg-yellow-500/10 border-yellow-500/30' : 
+                                                  rarity === 'Uncommon' ? 'bg-emerald-500/10 border-emerald-500/30' : 
+                                                  'bg-white/5 border-white/5'}`
+                                            }>
+                                                <div className={`p-2 rounded-full mb-2 ${rarity === 'LEGENDARY' ? 'bg-yellow-500 text-black' : 'bg-white/10 text-white'}`}>
+                                                    <RenderIcon iconName={icon} size={20} />
+                                                </div>
+                                                <div className="font-bold text-xs text-white truncate w-full">{name}</div>
+                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">{rarity}</div>
+                                                
+                                                {/* COUNTDOWN TIMER */}
+                                                {!isLegacy && timeLeft && timeLeft !== "Expired" && (
+                                                    <div className={`text-[9px] font-mono flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full ${isExpiringSoon ? 'bg-red-500/20 text-red-400 animate-pulse' : 'bg-blue-500/10 text-blue-400'}`}>
+                                                        <Clock size={8} /> {timeLeft} left
+                                                    </div>
+                                                )}
+                                                {isLegacy && <div className="text-[9px] text-slate-600 mt-1">Permanent</div>}
+                                            </div>
+                                        );
+                                    })}
+                                    {profileData.inventory.length === 0 && (
+                                        <div className="col-span-2 text-center py-8 text-slate-500 text-xs">
+                                            <Gift size={24} className="mx-auto mb-2 opacity-50"/>
+                                            Your wallet is empty.<br/>Log in daily to earn Tributes!
+                                        </div>
+                                    )}
+                                </div>
+                            </motion.div>
+                        ) : (
+                            <motion.div 
+                                key="showcase"
+                                initial={{ opacity: 0, x: 20 }} 
+                                animate={{ opacity: 1, x: 0 }} 
+                                exit={{ opacity: 0, x: -20 }}
+                                className="space-y-4"
+                            >
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-bold text-white flex items-center gap-2"><Gem size={16} className="text-yellow-400"/> Received Tributes</h3>
+                                    <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-1 rounded-full">{profileData.trophies.length} gifts</span>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-3">
+                                    {profileData.trophies.map((trophy, idx) => (
+                                        <div key={idx} className="aspect-square rounded-xl bg-gradient-to-br from-yellow-500/10 to-transparent border border-yellow-500/20 flex flex-col items-center justify-center p-2 relative group">
+                                            <RenderIcon iconName={trophy.icon} size={24} className="text-yellow-400 mb-1 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]"/>
+                                            <span className="text-[10px] font-bold text-yellow-100">{trophy.count > 1 ? `x${trophy.count}` : trophy.name}</span>
+                                            {/* Tooltip */}
+                                            <div className="absolute inset-0 bg-black/80 flex items-center justify-center text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity rounded-xl">
+                                                {trophy.count} received
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {profileData.trophies.length === 0 && (
+                                        <div className="col-span-3 text-center py-8 text-slate-500 text-xs">
+                                            <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-3"><Lock size={16}/></div>
+                                            No tributes received yet.<br/>Write amazing stories to earn them!
+                                        </div>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
             </div>
         </div>

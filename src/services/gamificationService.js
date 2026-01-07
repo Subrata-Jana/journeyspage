@@ -9,11 +9,13 @@ import {
   query, 
   where, 
   getDocs, 
-  getDoc 
+  getDoc,
+  serverTimestamp 
 } from "firebase/firestore";
 import { db } from "./firebase";
+import { fetchGameRules, evaluateBadges, calculateRank, getCleanWallet, selectDailyReward } from "../utils/gameRules"; 
 
-// --- DEFAULT CONFIGURATION (Fallback if DB is empty) ---
+// --- DEFAULT CONFIGURATION ---
 const DEFAULT_POINTS = {
   LIKE_GIVER: 5,
   LIKE_RECEIVER: 10,
@@ -22,42 +24,14 @@ const DEFAULT_POINTS = {
   SHARE_GIVER: 20
 };
 
-// --- HELPER: FETCH DYNAMIC RULES FROM ADMIN PANEL DATA ---
-const fetchGameRules = async () => {
-  try {
-    // 1. Fetch Ranks and Badges in parallel
-    const [ranksSnap, badgesSnap] = await Promise.all([
-      getDoc(doc(db, "meta", "ranks")),
-      getDoc(doc(db, "meta", "badges"))
-    ]);
-
-    // 2. Parse Ranks (Sort by Threshold/XP Ascending)
-    const ranks = ranksSnap.exists() 
-      ? (ranksSnap.data().items || []).sort((a, b) => parseInt(a.threshold) - parseInt(b.threshold))
-      : [];
-
-    // 3. Parse Badges
-    const badges = badgesSnap.exists() 
-      ? (badgesSnap.data().items || []) 
-      : [];
-
-    return { ranks, badges };
-  } catch (error) {
-    console.error("Error fetching game rules:", error);
-    // Return empty arrays so the app doesn't crash, logic will just skip updates
-    return { ranks: [], badges: [] };
-  }
-};
-
 // ======================================================
-// 1. LIGHTWEIGHT ACTIONS (Fast & Cheap)
+// 1. LIGHTWEIGHT ACTIONS
 // ======================================================
 
-// --- HANDLE LIKE ---
 export const toggleStoryLike = async (storyId, userId, authorId) => {
   const storyRef = doc(db, "stories", storyId);
-  const userRef = doc(db, "users", userId);     // The Reader
-  const authorRef = doc(db, "users", authorId); // The Writer
+  const userRef = doc(db, "users", userId);
+  const authorRef = doc(db, "users", authorId);
 
   try {
     await runTransaction(db, async (transaction) => {
@@ -68,23 +42,10 @@ export const toggleStoryLike = async (storyId, userId, authorId) => {
       const hasLiked = likes.includes(userId);
 
       if (hasLiked) {
-        // UNLIKE: Remove ID, Decrement Count
-        transaction.update(storyRef, {
-          likes: arrayRemove(userId),
-          likeCount: increment(-1)
-        });
-        // We generally don't deduct XP for unliking to prevent "XP bouncing" confusion
+        transaction.update(storyRef, { likes: arrayRemove(userId), likeCount: increment(-1) });
       } else {
-        // LIKE: Add ID, Increment Count, AWARD XP
-        transaction.update(storyRef, {
-          likes: arrayUnion(userId),
-          likeCount: increment(1)
-        });
-
-        // 1. Reward the Reader
+        transaction.update(storyRef, { likes: arrayUnion(userId), likeCount: increment(1) });
         transaction.update(userRef, { xp: increment(DEFAULT_POINTS.LIKE_GIVER) });
-
-        // 2. Reward the Author (Prevent self-liking abuse)
         if (userId !== authorId) {
             transaction.update(authorRef, { xp: increment(DEFAULT_POINTS.LIKE_RECEIVER) });
         }
@@ -97,10 +58,9 @@ export const toggleStoryLike = async (storyId, userId, authorId) => {
   }
 };
 
-// --- HANDLE TRACK (FOLLOW) ---
 export const toggleUserTrack = async (targetUserId, currentUserId) => {
-  const targetRef = doc(db, "users", targetUserId); // Person being followed
-  const currentRef = doc(db, "users", currentUserId); // Person following
+  const targetRef = doc(db, "users", targetUserId);
+  const currentRef = doc(db, "users", currentUserId);
 
   try {
     await runTransaction(db, async (transaction) => {
@@ -111,19 +71,11 @@ export const toggleUserTrack = async (targetUserId, currentUserId) => {
       const isTracking = trackers.includes(currentUserId);
 
       if (isTracking) {
-        // UNTRACK
         transaction.update(targetRef, { trackers: arrayRemove(currentUserId) });
         transaction.update(currentRef, { tracking: arrayRemove(targetUserId) });
       } else {
-        // TRACK & AWARD XP
-        transaction.update(targetRef, { 
-            trackers: arrayUnion(currentUserId),
-            xp: increment(DEFAULT_POINTS.TRACK_RECEIVER) 
-        });
-        transaction.update(currentRef, { 
-            tracking: arrayUnion(targetUserId),
-            xp: increment(DEFAULT_POINTS.TRACK_GIVER) 
-        });
+        transaction.update(targetRef, { trackers: arrayUnion(currentUserId), xp: increment(DEFAULT_POINTS.TRACK_RECEIVER) });
+        transaction.update(currentRef, { tracking: arrayUnion(targetUserId), xp: increment(DEFAULT_POINTS.TRACK_GIVER) });
       }
     });
     return { success: true };
@@ -133,7 +85,6 @@ export const toggleUserTrack = async (targetUserId, currentUserId) => {
   }
 };
 
-// --- HANDLE SHARE (SECURE) ---
 export const trackShare = async (storyId, userId) => {
   const storyRef = doc(db, "stories", storyId);
   const userRef = doc(db, "users", userId);
@@ -143,22 +94,11 @@ export const trackShare = async (storyId, userId) => {
       const storyDoc = await transaction.get(storyRef);
       if (!storyDoc.exists()) throw "Story missing";
 
-      // 1. Check if already shared by this user
       const sharedBy = storyDoc.data().sharedBy || [];
-      if (sharedBy.includes(userId)) {
-        return; // STOP! User already shared this. No points.
-      }
+      if (sharedBy.includes(userId)) return;
 
-      // 2. If new share: Add ID, Increment Count
-      transaction.update(storyRef, {
-        sharedBy: arrayUnion(userId),
-        shareCount: increment(1)
-      });
-      
-      // 3. Give points to the SHARER
-      transaction.update(userRef, {
-        xp: increment(DEFAULT_POINTS.SHARE_GIVER) 
-      });
+      transaction.update(storyRef, { sharedBy: arrayUnion(userId), shareCount: increment(1) });
+      transaction.update(userRef, { xp: increment(DEFAULT_POINTS.SHARE_GIVER) });
     });
     return { success: true };
   } catch (e) {
@@ -167,169 +107,209 @@ export const trackShare = async (storyId, userId) => {
   }
 };
 
-// --- COLLECT TREASURE / HEIRLOOM ---
+// --- 🎒 COLLECT TREASURE (With Expiry) ---
 export const collectLoot = async (userId, lootItem) => {
   try {
     const userRef = doc(db, "users", userId);
     
-    // We default to 50 XP if 'points' isn't defined on the item
     const xpValue = parseInt(lootItem.points) || 50;
+    
+    // Calculate Expiry Date based on Admin Rule or Default
+    const expiryHours = parseInt(lootItem.expiryHours || (lootItem.rarity === 'LEGENDARY' ? 720 : 24)); 
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + expiryHours);
+
+    // Create the "Active Item" object
+    const inventoryItem = {
+        itemId: lootItem.id,
+        name: lootItem.name,
+        icon: lootItem.icon,
+        rarity: lootItem.rarity,
+        obtainedAt: new Date().toISOString(),
+        expiresAt: expiresAt.toISOString()
+    };
 
     await updateDoc(userRef, {
-      inventory: arrayUnion(lootItem.id), // Unlock in Profile
-      xp: increment(xpValue)              // Level Up!
+      inventory: arrayUnion(inventoryItem),
+      xp: increment(xpValue)
     });
 
-    return { success: true, message: `You found: ${lootItem.name}`, xpGained: xpValue };
+    return { success: true, message: `Found: ${lootItem.name}`, xpGained: xpValue };
   } catch (error) {
     console.error("Loot error:", error);
     return { success: false, message: "Could not collect loot." };
   }
 };
 
+// ======================================================
+// 🎁 SEND TRIBUTE (The Exchange) - CRITICAL FOR STORY DETAIL
+// ======================================================
+export const sendTribute = async (senderId, authorId, storyId, item, message) => {
+  const senderRef = doc(db, "users", senderId);
+  const authorRef = doc(db, "users", authorId);
+  const storyRef = doc(db, "stories", storyId);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      // 1. Get Sender Data to verify ownership
+      const senderDoc = await transaction.get(senderRef);
+      if (!senderDoc.exists()) throw "User not found";
+      const senderData = senderDoc.data();
+      
+      const inventory = senderData.inventory || [];
+      // Find exact item instance by timestamp to handle duplicates correctly
+      const itemIndex = inventory.findIndex(i => i.obtainedAt === item.obtainedAt && i.itemId === item.itemId);
+      
+      if (itemIndex === -1) throw "Item no longer exists in wallet";
+
+      // 2. Get Author Data
+      const authorDoc = await transaction.get(authorRef);
+      if (!authorDoc.exists()) throw "Author not found";
+      const authorData = authorDoc.data();
+      let trophies = authorData.trophies || [];
+
+      // 3. Move Item
+      const newInventory = [...inventory];
+      newInventory.splice(itemIndex, 1); // Remove from sender
+
+      // Add to Author
+      const trophyIndex = trophies.findIndex(t => t.name === item.name);
+      if (trophyIndex > -1) {
+        trophies[trophyIndex].count = (trophies[trophyIndex].count || 1) + 1;
+      } else {
+        trophies.push({
+          name: item.name,
+          icon: item.icon,
+          rarity: item.rarity,
+          count: 1
+        });
+      }
+
+      // 4. Update Stats & XP
+      transaction.update(senderRef, { inventory: newInventory, xp: increment(50) }); // Giver Reward
+      transaction.update(authorRef, { trophies: trophies, xp: increment(100) });    // Receiver Reward
+      transaction.update(storyRef, { tributeCount: increment(1) });
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Tribute Error:", error);
+    return { success: false, error: error.message || "Failed to send gift" };
+  }
+};
 
 // ======================================================
-// 🏆 THE DYNAMIC ENGINE: SYNC EVERYTHING
-// This reads rules from DB (Admin Panel), interprets them, 
-// and updates the user's Ranks/Badges automatically.
-// Run this on critical events (Publishing, Profile Edit).
+// 🔄 DAILY SESSION MANAGER
+// ======================================================
+export const processUserSession = async (userId) => {
+    const userRef = doc(db, "users", userId);
+    try {
+        await runTransaction(db, async (transaction) => {
+            const userDoc = await transaction.get(userRef);
+            if (!userDoc.exists()) return;
+            const userData = userDoc.data();
+            const { loot } = await fetchGameRules();
+            const { cleanInventory, hasChanges } = getCleanWallet(userData.inventory || []);
+            
+            let rewardMsg = null;
+            const today = new Date().toISOString().split('T')[0];
+            const lastLogin = userData.lastLoginDate || "";
+
+            if (lastLogin !== today) {
+                const reward = selectDailyReward(loot);
+                if (reward) {
+                    const expiryHours = reward.expiryHours || 24;
+                    const expiresAt = new Date();
+                    expiresAt.setHours(expiresAt.getHours() + expiryHours);
+                    cleanInventory.push({
+                        itemId: reward.id,
+                        name: reward.name,
+                        icon: reward.icon,
+                        rarity: reward.rarity,
+                        obtainedAt: new Date().toISOString(),
+                        expiresAt: expiresAt.toISOString(),
+                        source: 'daily_login'
+                    });
+                    rewardMsg = reward.name;
+                }
+            }
+
+            if (hasChanges || lastLogin !== today) {
+                transaction.update(userRef, {
+                    inventory: cleanInventory,
+                    lastLoginDate: today,
+                    ...(rewardMsg ? { xp: increment(10) } : {}) 
+                });
+            }
+        });
+        return { success: true };
+    } catch (error) {
+        console.error("Session Process Error:", error);
+        return { success: false };
+    }
+};
+
+// ======================================================
+// 🏆 MASTER ENGINE: SYNC
 // ======================================================
 export const syncUserGamification = async (userId) => {
   const userRef = doc(db, "users", userId);
-
   try {
-    // 1. Fetch Dynamic Rules from DB (Ranks & Badges from Admin Panel)
     const { ranks, badges: badgeRules } = await fetchGameRules();
-
     await runTransaction(db, async (transaction) => {
-      // 2. Fetch User Data
       const userDoc = await transaction.get(userRef);
       if (!userDoc.exists()) throw "User not found";
       const userData = userDoc.data();
 
-      // 3. Fetch & Calculate Stats (The Source of Truth)
-      //    We aggregate data from all their approved stories
-      const storiesQ = query(
-        collection(db, "stories"), 
-        where("authorId", "==", userId), 
-        where("status", "==", "approved")
-      );
+      const storiesQ = query(collection(db, "stories"), where("authorId", "==", userId), where("status", "==", "approved"));
       const storiesSnap = await getDocs(storiesQ);
       
-      let calculatedStats = {
-        stories: storiesSnap.size,
-        totalLikes: 0,
-        totalShares: 0,
-        uniquePlaces: new Set()
-      };
+      let calculatedStats = { stories: storiesSnap.size, totalLikes: 0, totalShares: 0, uniquePlaces: new Set() };
 
       storiesSnap.forEach(doc => {
         const data = doc.data();
-        
-        // Sum Likes (Handle Array vs Number)
-        const likes = typeof data.likeCount === 'number' 
-            ? data.likeCount : (data.likes?.length || 0);
-        calculatedStats.totalLikes += likes;
-
-        // Sum Shares (Handle Array vs Number)
-        const shares = typeof data.shareCount === 'number' 
-            ? data.shareCount : (data.sharedBy?.length || 0);
-        calculatedStats.totalShares += shares;
-        
-        // Count Unique Places
-        if (data.locationData?.value?.place_id) {
-            calculatedStats.uniquePlaces.add(data.locationData.value.place_id);
-        } else if (data.location) {
-            calculatedStats.uniquePlaces.add(data.location.trim().toLowerCase());
-        }
+        calculatedStats.totalLikes += typeof data.likeCount === 'number' ? data.likeCount : (data.likes?.length || 0);
+        calculatedStats.totalShares += typeof data.shareCount === 'number' ? data.shareCount : (data.sharedBy?.length || 0);
+        if (data.locationData?.value?.place_id) calculatedStats.uniquePlaces.add(data.locationData.value.place_id);
+        else if (data.location) calculatedStats.uniquePlaces.add(data.location.trim().toLowerCase());
       });
 
-      const uniquePlacesCount = calculatedStats.uniquePlaces.size;
-
-      // 4. 🛡️ DYNAMIC BADGE LOGIC (The Interpreter)
-      //    We map the Admin Panel rules to real stats here.
       let currentBadges = userData.badges || [];
       let newXP = userData.xp || 0;
-      let hasUpdates = false;
-
-      // Loop through the rules fetched from DB
+      
       badgeRules.forEach(rule => {
-        // Does user already have it?
         const alreadyUnlocked = currentBadges.some(b => b.id === rule.id && b.isUnlocked);
-        
-        // INTERPRET CONDITION based on Description or Keywords
-        // (Since Admin Panel is generic, we detect logic from text)
         const desc = (rule.description || "").toLowerCase();
         const name = (rule.name || "").toLowerCase();
         const threshold = parseInt(rule.value || rule.threshold || 0);
         
         let qualifies = false;
-
-        if (desc.includes("like") || name.includes("like")) {
-           // ❤️ Likes Trigger
-           qualifies = calculatedStats.totalLikes >= threshold;
-        } 
-        else if (desc.includes("visit") || desc.includes("place") || name.includes("walker")) {
-           // 🌍 Places Trigger
-           qualifies = uniquePlacesCount >= threshold;
-        }
-        else if (desc.includes("share") || name.includes("share")) {
-           // 🔗 Share Trigger
-           qualifies = calculatedStats.totalShares >= threshold;
-        }
-        else {
-           // 📝 Default: Story Count Trigger (Liftoff, Road Warrior, etc.)
-           qualifies = calculatedStats.stories >= threshold;
-        }
+        if (desc.includes("like") || name.includes("like")) qualifies = calculatedStats.totalLikes >= threshold;
+        else if (desc.includes("visit") || desc.includes("place") || name.includes("walker")) qualifies = calculatedStats.uniquePlaces.size >= threshold;
+        else if (desc.includes("share") || name.includes("share")) qualifies = calculatedStats.totalShares >= threshold;
+        else qualifies = calculatedStats.stories >= threshold;
 
         if (qualifies && !alreadyUnlocked) {
-          console.log(`Unlocking Dynamic Badge: ${rule.name}`);
-          hasUpdates = true;
-          // XP Reward is purely visual/bonus here, assuming main XP comes from actions
-          // But we can award bonus XP for the badge itself:
           newXP += 50; 
-          
           currentBadges.push({
-            id: rule.id,
-            name: rule.name,
-            icon: rule.icon,
-            description: rule.description,
-            color: rule.color,
-            isUnlocked: true,
-            unlockedAt: new Date().toISOString()
+            id: rule.id, name: rule.name, icon: rule.icon, description: rule.description,
+            color: rule.color, isUnlocked: true, unlockedAt: new Date().toISOString()
           });
         }
       });
 
-      // 5. 📈 DYNAMIC RANK LOGIC
-      //    Find the highest rank where currentXP >= rank.threshold
-      //    (Ranks were already sorted by fetchGameRules)
-      let eligibleRank = ranks.length > 0 ? ranks[0] : { name: "Tourist", minXP: 0 };
+      // RANK LOGIC
       
-      // Iterate backwards to find highest eligible rank
+      let eligibleRank = ranks.length > 0 ? ranks[0] : { name: "Tourist", minXP: 0 };
       for (let i = ranks.length - 1; i >= 0; i--) {
-          const r = ranks[i];
-          const threshold = parseInt(r.threshold || r.minXP || 0);
-          if (newXP >= threshold) {
-              eligibleRank = r;
-              break;
-          }
+          if (newXP >= parseInt(ranks[i].threshold || ranks[i].minXP || 0)) { eligibleRank = ranks[i]; break; }
       }
       
-      // 6. COMMIT UPDATES
       transaction.update(userRef, {
-        xp: newXP,
-        badges: currentBadges,
-        currentRank: eligibleRank,
-        stats: {
-            stories: calculatedStats.stories,
-            likes: calculatedStats.totalLikes,
-            shares: calculatedStats.totalShares,
-            places: uniquePlacesCount
-        }
+        xp: newXP, badges: currentBadges, currentRank: eligibleRank,
+        stats: { stories: calculatedStats.stories, likes: calculatedStats.totalLikes, shares: calculatedStats.totalShares, places: calculatedStats.uniquePlaces.size }
       });
     });
-
     return { success: true };
   } catch (error) {
     console.error("Sync Error:", error);
