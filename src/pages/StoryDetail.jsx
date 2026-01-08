@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useContext, createContext } from "react";
+import React, { useEffect, useState, useContext, createContext, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom"; 
 import { 
-  collection, doc, getDoc, getDocs, orderBy, query, updateDoc, onSnapshot
+  collection, doc, getDoc, getDocs, orderBy, query, updateDoc, onSnapshot, increment, addDoc, serverTimestamp 
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { motion, useScroll, useSpring, AnimatePresence } from "framer-motion"; 
@@ -9,7 +9,7 @@ import {
   MapPin, Calendar, Flag, Mountain, Info, Lightbulb, User, 
   Utensils, BedDouble, Navigation, 
   ShieldAlert, Share2, Heart, Send, 
-  ArrowLeft, Sun, Moon, Footprints, Check, Globe2, AlertTriangle, Edit3, Hammer, SearchCheck, Gift
+  ArrowLeft, Sun, Moon, Footprints, Check, Globe2, AlertTriangle, Edit3, Hammer, SearchCheck, Gift, X, MessageSquare
 } from "lucide-react";
 import * as LucideIcons from "lucide-react"; 
 import toast, { Toaster } from "react-hot-toast"; 
@@ -17,6 +17,7 @@ import { db } from "../services/firebase";
 import { useMetaOptions } from "../hooks/useMetaOptions"; 
 import GallerySlider from "../components/GallerySlider"; 
 import { toggleStoryLike, toggleUserTrack, trackShare } from "../services/gamificationService";
+import { sendNotification } from "../services/notificationService"; // 🔔 IMPORTED
 import TreasureSpawner from "../components/premium/TreasureSpawner"; 
 import GiftModal from "../components/gamification/GiftModal";
 
@@ -77,6 +78,52 @@ export default function StoryDetail() {
 
   // ✍️ AUTHOR EDIT MODE CHECK
   const [isAuthorView, setIsAuthorView] = useState(false);
+
+  // --- 👁️ ADVANCED VIEW COUNTER ("The Reader Test") ---
+  // A view only counts if: 5 seconds passed AND user scrolled > 150px
+  const [minTimePassed, setMinTimePassed] = useState(false);
+  const [hasScrolled, setHasScrolled] = useState(false);
+  const viewTriggered = useRef(false);
+
+  // 1. Time Check (5 Seconds)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setMinTimePassed(true);
+    }, 5000); 
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 2. Scroll Check (>150px)
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!hasScrolled && window.scrollY > 150) {
+        setHasScrolled(true);
+      }
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [hasScrolled]);
+
+  // 3. Trigger View Count (Only once per session)
+  useEffect(() => {
+    if (!storyId || viewTriggered.current) return;
+
+    if (minTimePassed && hasScrolled) {
+        const sessionKey = `viewed_${storyId}`;
+        
+        // Check Session Storage to prevent F5 spam
+        if (sessionStorage.getItem(sessionKey)) return;
+
+        viewTriggered.current = true; 
+        sessionStorage.setItem(sessionKey, "true"); 
+
+        const storyRef = doc(db, "stories", storyId);
+        updateDoc(storyRef, {
+            views: increment(1)
+        }).then(() => console.log("👁️ Valid Read Counted!"))
+          .catch(e => console.error("View error:", e));
+    }
+  }, [minTimePassed, hasScrolled, storyId]);
 
   // 🌓 THEME STATE
   const [isDark, setIsDark] = useState(() => {
@@ -201,26 +248,78 @@ export default function StoryDetail() {
             setTrackersCount(previousCount);
             toast.error("Action failed");
         } else if (!previousTracking) {
+            // 🔔 NOTIFICATION TRIGGER
+            sendNotification({
+                recipientId: story.authorId,
+                type: 'track',
+                title: 'New Tracker',
+                message: `${currentUser.displayName || "A Scout"} started tracking you!`,
+                link: `/profile/${currentUser.uid}`
+            });
             toast.success(`Tracking ${story.authorName}! (+10 XP)`);
         }
     };
 
   const handleLike = async () => {
-        if (!currentUser) return toast.error("Please login to like stories");
-        const previousLiked = hasLiked;
-        const previousCount = likeCount;
-        setHasLiked(!hasLiked);
-        setLikeCount(prev => hasLiked ? prev - 1 : prev + 1);
+    if (!currentUser) return toast.error("Please login to like stories");
+    
+    // 1. Optimistic UI Update (Instant Feedback)
+    const previousLiked = hasLiked;
+    const previousCount = likeCount;
+    setHasLiked(!hasLiked);
+    setLikeCount(prev => hasLiked ? prev - 1 : prev + 1);
 
-        const result = await toggleStoryLike(story.id, currentUser.uid, story.authorId);
-        if (!result.success) {
-            setHasLiked(previousLiked);
-            setLikeCount(previousCount);
-            toast.error("Action failed");
-        } else if (!previousLiked) {
-            toast.success(`Liked! (+5 XP)`); 
+    // 2. Database Call
+    const result = await toggleStoryLike(story.id, currentUser.uid, story.authorId);
+    
+    if (result.success) {
+        // 3. 🛡️ SMART NOTIFICATION LOGIC
+        // Only proceed if:
+        // A. It is a "Like" action (not unlike)
+        // B. The user is not liking their own story
+        if (!previousLiked && currentUser.uid !== story.authorId) {
+            
+            // C. DE-DUPLICATION CHECK: Have we already notified them about this?
+            // We query the notifications collection for an existing 'like' from this user on this story.
+            try {
+                const checkQuery = query(
+                    collection(db, "notifications"),
+                    where("recipientId", "==", story.authorId),
+                    where("type", "==", "like"),
+                    where("link", "==", `/story/${story.id}`),
+                    // Check if the message contains the current user's name to ensure it's from them
+                    where("message", "==", `${currentUser.displayName || "A user"} liked "${story.title}"`) 
+                );
+                
+                const existingDocs = await getDocs(checkQuery);
+
+                // D. Only send if NO previous notification exists
+                if (existingDocs.empty) {
+                    await sendNotification({
+                        recipientId: story.authorId,
+                        type: 'like',
+                        title: 'New Like',
+                        message: `${currentUser.displayName || "A user"} liked "${story.title}"`,
+                        link: `/story/${story.id}`
+                    });
+                } else {
+                    console.log("Skipping duplicate notification");
+                }
+            } catch (err) {
+                console.error("Notification check failed", err);
+            }
         }
-    };
+        
+        // Show Toast only on the "Like" action, not unlike
+        if (!previousLiked) toast.success(`Liked! (+5 XP)`); 
+
+    } else {
+        // Revert on failure
+        setHasLiked(previousLiked);
+        setLikeCount(previousCount);
+        toast.error("Action failed");
+    }
+  };
 
   const handleGift = () => {
       if (!currentUser) return toast.error("Log in to send a Tribute!");
@@ -259,12 +358,38 @@ export default function StoryDetail() {
 
   const handlePostComment = async () => { 
     if(!newComment.trim()) return;
+    if(!currentUser) return toast.error("Please login to comment");
+    
     setSubmittingComment(true);
-    setTimeout(() => {
+    
+    try {
+        await addDoc(collection(db, "stories", storyId, "comments"), {
+            text: newComment,
+            userId: currentUser.uid,
+            userName: currentUser.displayName || "Anonymous",
+            userPhoto: currentUser.photoURL || "",
+            createdAt: serverTimestamp()
+        });
+
+        // 🔔 NOTIFICATION TRIGGER
+        if (currentUser.uid !== story.authorId) {
+            await sendNotification({
+                recipientId: story.authorId,
+                type: 'comment',
+                title: 'New Comment',
+                message: `${currentUser.displayName || "Someone"} commented on "${story.title}"`,
+                link: `/story/${story.id}`
+            });
+        }
+
         setNewComment("");
-        setSubmittingComment(false);
         toast.success("Comment posted!");
-    }, 1000);
+    } catch (e) {
+        console.error("Comment error", e);
+        toast.error("Failed to post comment");
+    } finally {
+        setSubmittingComment(false);
+    }
   };
 
   const toggleFeedback = (fieldId, comment) => {
@@ -324,6 +449,8 @@ export default function StoryDetail() {
     <ReviewContext.Provider value={{ isAdminView, isAuthorView, feedback, toggleFeedback, isResubmission }}>
     <div className="bg-slate-50 dark:bg-[#0B0F19] min-h-screen pb-32 font-sans transition-colors duration-300 relative overflow-x-hidden">
       <Toaster position="bottom-center" />
+      
+      {/* 💎 TREASURE SPAWNER FOR READERS */}
       <TreasureSpawner /> 
 
       <motion.div className="fixed top-0 left-0 right-0 h-1.5 z-[100] bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 origin-left" style={{ scaleX }} />

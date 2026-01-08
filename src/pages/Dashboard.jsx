@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import {
   FileText, Image as ImageIcon, BarChart2, TrendingUp, Plus,
   Search, Settings, LogOut, Compass, Eye, Pencil, Trash2,
-  Menu, X, Shield, Globe, Sun, Moon, MapPin, Gem,
+  Menu, X, Globe, Sun, Moon, MapPin, 
   AlertCircle, Clock, RotateCcw, CheckCircle,
   Users, Zap, Share2
 } from "lucide-react";
@@ -21,40 +21,29 @@ import { useGamification, RenderIcon } from "../hooks/useGamification";
 import LevelBadge from "../components/premium/LevelBadge";
 import LevelProgress from "../components/premium/LevelProgress";
 import { processUserSession } from "../services/gamificationService";
-import GiftOverlay from "../components/gamification/GiftOverlay";
+// ❌ REMOVED: import GiftOverlay from "../components/gamification/GiftOverlay";
+import InteractionHub from "../components/dashboard/InteractionHub"; // 🔔 The Premium Bell
 
 export default function Dashboard() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
   
-
-  // --- VIEW STATE ---
+  // ... (All your existing state variables: currentView, dashboardStats, userData, theme, etc.) ...
+  // (Paste all the state and useEffects from your previous Dashboard.jsx here - no changes needed to logic)
+  // ...
   const [currentView, setCurrentView] = useState("overview");
   const [stories, setStories] = useState([]); 
   const [loadingStories, setLoadingStories] = useState(true);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-
-  // --- REAL-TIME STATS STATE ---
-  const [dashboardStats, setDashboardStats] = useState({
-    totalStories: 0,
-    totalLikes: 0,
-    totalViews: 0,
-    totalShares: 0,
-    placesVisited: 0
-  });
-
-  // --- USER DATA ---
+  const [dashboardStats, setDashboardStats] = useState({ totalStories: 0, totalLikes: 0, totalViews: 0, totalShares: 0, placesVisited: 0 });
   const [userData, setUserData] = useState({ xp: 0, badges: [], inventory: [], name: "" });
   const [hubTab, setHubTab] = useState("tracking");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
   const [siteLogo, setSiteLogo] = useState(null);
-
-  // ⚡ GAMIFICATION ENGINE
   const { currentRank, badges, loot, loading: gameLoading } = useGamification(userData.xp, userData.badges, userData.inventory);
 
-  // --- THEME & LOGO ---
   useEffect(() => {
     const root = window.document.documentElement;
     if (theme === "dark") root.classList.add("dark");
@@ -71,114 +60,60 @@ export default function Dashboard() {
     return () => unsub();
   }, []);
 
-  // 🚀 IGNITION: Check Daily Rewards & Clean Wallet on Load
-  useEffect(() => {
-    if (user?.uid) {
-      processUserSession(user.uid);
-    }
-  }, [user]);
+  useEffect(() => { if (user?.uid) processUserSession(user.uid); }, [user]);
 
-  // --- 1. USER SYNC & DAILY BONUS ---
   useEffect(() => {
     if (!user?.uid) return;
     const unsubUser = onSnapshot(doc(db, "users", user.uid), async (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setUserData(data);
-
-        // Daily Bonus
         const today = new Date().toDateString();
         if (data.lastLogin !== today) {
-            try {
-                await updateDoc(doc(db, "users", user.uid), {
-                    xp: increment(10),
-                    lastLogin: today
-                });
-                toast.success("Daily Login Bonus: +10 XP!", { icon: "🌞" });
-            } catch (e) { console.error(e); }
+            try { await updateDoc(doc(db, "users", user.uid), { xp: increment(10), lastLogin: today }); toast.success("Daily Login Bonus: +10 XP!", { icon: "🌞" }); } catch (e) { console.error(e); }
         }
       }
     });
     return () => unsubUser();
   }, [user]);
 
-  // --- 2. CALCULATE ACCURATE STATS ---
   useEffect(() => {
     if (!user?.uid) return;
-
     const fetchStats = async () => {
       try {
         const q = query(collection(db, "stories"), where("authorId", "==", user.uid));
         const snap = await getDocs(q);
-        
-        let likes = 0;
-        let views = 0;
-        let shares = 0; 
-        const uniquePlaces = new Set(); 
-
+        let likes = 0; let views = 0; let shares = 0; const uniquePlaces = new Set(); 
         snap.docs.forEach(doc => {
           const data = doc.data();
-
-          // Handle Number vs Array for Likes/Shares
-          const storyLikes = typeof data.likeCount === 'number' 
-              ? data.likeCount : (Array.isArray(data.likes) ? data.likes.length : 0);
-          likes += storyLikes;
-
-          const storyShares = typeof data.shareCount === 'number' 
-              ? data.shareCount : (Array.isArray(data.sharedBy) ? data.sharedBy.length : 0);
-          shares += storyShares;
-
+          likes += typeof data.likeCount === 'number' ? data.likeCount : (Array.isArray(data.likes) ? data.likes.length : 0);
+          shares += typeof data.shareCount === 'number' ? data.shareCount : (Array.isArray(data.sharedBy) ? data.sharedBy.length : 0);
           views += (data.views || 0);
-
-          if (data.locationData && data.locationData.value && data.locationData.value.place_id) {
-            uniquePlaces.add(data.locationData.value.place_id);
-          } else if (data.location) {
-            uniquePlaces.add(data.location.trim().toLowerCase());
-          }
+          if (data.locationData?.value?.place_id) uniquePlaces.add(data.locationData.value.place_id);
+          else if (data.location) uniquePlaces.add(data.location.trim().toLowerCase());
         });
-        
-        setDashboardStats({
-          totalStories: snap.size,
-          totalLikes: likes,
-          totalViews: views,
-          totalShares: shares,
-          placesVisited: uniquePlaces.size
-        });
-
+        setDashboardStats({ totalStories: snap.size, totalLikes: likes, totalViews: views, totalShares: shares, placesVisited: uniquePlaces.size });
       } catch (error) { console.error("Stats error:", error); }
     };
     fetchStats();
   }, [user?.uid, stories]); 
 
-  // --- 3. LOAD DISPLAY STORIES ---
   useEffect(() => {
     if (!user?.uid) return;
     const loadDisplayStories = async () => {
       setLoadingStories(true);
-      if (currentView === "feed") {
-        setStories([]); setLoadingStories(false); return;
-      }
+      if (currentView === "feed") { setStories([]); setLoadingStories(false); return; }
       try {
         const limitCount = currentView === "stories" ? 50 : 5;
-        const q = query(
-          collection(db, "stories"),
-          where("authorId", "==", user.uid),
-          orderBy("createdAt", "desc"),
-          limit(limitCount)
-        );
+        const q = query(collection(db, "stories"), where("authorId", "==", user.uid), orderBy("createdAt", "desc"), limit(limitCount));
         const snap = await getDocs(q);
         setStories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch (err) { console.error(err); } 
-      finally { setLoadingStories(false); }
+      } catch (err) { console.error(err); } finally { setLoadingStories(false); }
     };
     loadDisplayStories();
   }, [user?.uid, currentView]);
 
-  const handleLogout = async (e) => {
-    if(e) e.stopPropagation();
-    try { await logout(); navigate("/login"); } 
-    catch (error) { toast.error("Failed to log out"); }
-  };
+  const handleLogout = async (e) => { if(e) e.stopPropagation(); try { await logout(); navigate("/login"); } catch (error) { toast.error("Failed to log out"); } };
 
   const handleDeleteDraft = async (id, status, published) => {
     if (published && status !== "returned") return toast.error("Cannot delete published/pending stories.");
@@ -191,15 +126,9 @@ export default function Dashboard() {
         const data = storySnap.data();
         const imageRefs = [];
         if (data.coverImage) imageRefs.push(ref(storage, data.coverImage));
-        if (Array.isArray(data.gallery)) {
-          data.gallery.forEach(item => {
-            const url = typeof item === "string" ? item : item.url;
-            if (url) imageRefs.push(ref(storage, url));
-          });
-        }
+        if (Array.isArray(data.gallery)) { data.gallery.forEach(item => { const url = typeof item === "string" ? item : item.url; if (url) imageRefs.push(ref(storage, url)); }); }
         const daysSnap = await getDocs(collection(db, "stories", id, "days"));
-        const deleteDaysPromises = daysSnap.docs.map(d => deleteDoc(d.ref));
-        await Promise.all(deleteDaysPromises);
+        await Promise.all(daysSnap.docs.map(d => deleteDoc(d.ref)));
         await Promise.allSettled(imageRefs.map(deleteObject));
       }
       await deleteDoc(storyRef);
@@ -222,12 +151,13 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-[#0B0F19] text-slate-900 dark:text-white overflow-hidden font-sans transition-colors duration-300"> 
-    <GiftOverlay />
+      
+      {/* ❌ GiftOverlay REMOVED - It won't popup automatically anymore */}
+      
       <Toaster position="bottom-right" toastOptions={{ style: { background: '#1e293b', color: '#fff', border: '1px solid #334155' } }} />
 
-      {/* SIDEBAR */}
+      {/* SIDEBAR (unchanged) */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-[#0B0F19]/95 backdrop-blur-2xl border-r border-slate-200 dark:border-white/5 p-6 flex flex-col transition-transform duration-300 lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        {/* Logo */}
         <div className="flex items-center gap-3 mb-10 px-2 relative">
           {siteLogo ? (<img src={siteLogo} alt="Logo" className={`h-12 w-auto object-contain transition-all duration-300 ${theme === 'light' ? 'invert brightness' : ''}`} />) : (<div className="relative w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center text-white shadow-xl shadow-orange-500/20 border border-white/10"><Compass size={24} /></div>)}
           <div className="flex flex-col -space-y-0.5"><span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white leading-none">Journeys</span><span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 tracking-[0.35em] uppercase leading-none ml-[1px]">Page</span></div>
@@ -238,21 +168,13 @@ export default function Dashboard() {
           <NavItem icon={<BarChart2 size={20}/>} label="Overview" active={currentView === 'overview'} onClick={() => setCurrentView('overview')} />
           <NavItem icon={<Globe size={20}/>} label="Travel Hub" active={currentView === 'feed'} onClick={() => setCurrentView('feed')} />
           <NavItem icon={<FileText size={20}/>} label="My Stories" active={currentView === 'stories'} onClick={() => setCurrentView('stories')} />
-          
-          {/* Settings Group */}
           <div className="mt-8 mb-2 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</div>
           <NavItem icon={<Settings size={20}/>} label="Profile & Settings" onClick={() => navigate('/profile')} />
         </nav>
 
-        {/* 👤 UPGRADED "PASSPORT" USER CARD (Vertical Layout) */}
         <div className="mt-auto pt-6 border-t border-slate-100 dark:border-white/5">
-          <div 
-            className="group relative bg-slate-50 dark:bg-[#151b2b] p-4 rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden cursor-pointer transition-all hover:border-orange-500/30 hover:shadow-lg"
-            onClick={() => navigate('/profile')}
-          >
-             {/* Background Decoration */}
+          <div className="group relative bg-slate-50 dark:bg-[#151b2b] p-4 rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden cursor-pointer transition-all hover:border-orange-500/30 hover:shadow-lg" onClick={() => navigate('/profile')}>
              <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/5 rounded-full blur-2xl -mr-10 -mt-10 transition-opacity opacity-50 group-hover:opacity-100"/>
-             
              <div className="flex items-center gap-3 mb-3">
                 <div className="relative shrink-0">
                     <img src={userData.photoURL || `https://ui-avatars.com/api/?name=${userData.name || 'User'}`} className="w-12 h-12 rounded-full object-cover border-2 border-white dark:border-[#0B0F19] shadow-sm" alt="User" />
@@ -260,35 +182,14 @@ export default function Dashboard() {
                 </div>
                 <div className="flex-1 min-w-0">
                    <h4 className="font-bold text-slate-900 dark:text-white truncate text-base">{userData.name || "User"}</h4>
-                   <div className="flex items-center gap-2 mt-0.5">
-                       <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-500/20 uppercase tracking-wide">
-                           {currentRank?.name || "Scout"}
-                       </span>
-                   </div>
+                   <div className="flex items-center gap-2 mt-0.5"><span className="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-500/20 uppercase tracking-wide">{currentRank?.name || "Scout"}</span></div>
                 </div>
              </div>
-
-             {/* Mini XP Bar */}
              <div className="mb-3">
-                <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-bold mb-1">
-                    <span>Lvl {Math.floor((userData.xp || 0)/100) + 1}</span>
-                    <span>{userData.xp} XP</span>
-                </div>
-                <div className="h-1.5 w-full bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden">
-                    <div 
-                        className="h-full bg-gradient-to-r from-orange-500 to-red-500 rounded-full" 
-                        style={{ width: `${Math.min((userData.xp % 100), 100)}%` }}
-                    />
-                </div>
+                <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-bold mb-1"><span>Lvl {Math.floor((userData.xp || 0)/100) + 1}</span><span>{userData.xp} XP</span></div>
+                <div className="h-1.5 w-full bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-red-500 rounded-full" style={{ width: `${Math.min((userData.xp % 100), 100)}%` }}/></div>
              </div>
-
-             {/* Logout Button */}
-             <button 
-                onClick={handleLogout} 
-                className="w-full py-2 flex items-center justify-center gap-2 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/5 text-slate-500 dark:text-slate-400 text-xs font-bold hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-500/20 transition-all"
-             >
-                <LogOut size={14}/> Sign Out
-             </button>
+             <button onClick={handleLogout} className="w-full py-2 flex items-center justify-center gap-2 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/5 text-slate-500 dark:text-slate-400 text-xs font-bold hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-500/20 transition-all"><LogOut size={14}/> Sign Out</button>
           </div>
         </div>
       </aside>
@@ -306,12 +207,10 @@ export default function Dashboard() {
           </div>
           
           <div className="flex items-center gap-3">
-              {/* 🌓 HEADER THEME TOGGLE */}
-              <button 
-                onClick={toggleTheme} 
-                className="p-2.5 rounded-xl bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/10 hover:text-orange-500 hover:border-orange-500/30 transition-all shadow-sm"
-                title="Switch Theme"
-              >
+              {/* 🔔 THE NEW INTERACTION HUB (Small Bell, Big Power) */}
+              <InteractionHub />
+
+              <button onClick={toggleTheme} className="p-2.5 rounded-xl bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/10 hover:text-orange-500 hover:border-orange-500/30 transition-all shadow-sm" title="Switch Theme">
                 {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
               </button>
 
@@ -325,11 +224,14 @@ export default function Dashboard() {
           
           {currentView === 'overview' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {/* 1. PREMIUM HEADER */}
-                <div className="relative rounded-[2.5rem] p-8 md:p-10 overflow-hidden shadow-2xl group border border-white/5 bg-[#0f111a]">
+                
+                {/* 1. PROFILE CARD (RESTORED TO FULL WIDTH) */}
+                <div className="relative rounded-[2.5rem] p-8 md:p-10 overflow-hidden shadow-2xl group border border-white/5 bg-[#0f111a] flex flex-col justify-between">
                     <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-orange-500/20 via-[#0B0F19] to-[#0B0F19] z-0"/>
+                    
                     <div className="relative z-10 flex flex-col xl:flex-row justify-between items-center gap-8">
-                        <div className="flex flex-col sm:flex-row items-center gap-6 w-full xl:w-auto text-center sm:text-left">
+                        {/* Avatar & Rank */}
+                        <div className="flex flex-col sm:flex-row items-center gap-6 text-center sm:text-left">
                             <div className="relative shrink-0 group-hover:scale-105 transition-transform duration-500">
                                 <div className="absolute inset-0 bg-gradient-to-br from-orange-500 to-purple-600 rounded-full blur-2xl opacity-40 group-hover:opacity-60 transition-opacity animate-pulse-slow"/>
                                 <div className="relative bg-[#0B0F19] rounded-full p-1 ring-4 ring-white/5"><LevelBadge rank={currentRank} size="xl" /></div>
@@ -344,6 +246,8 @@ export default function Dashboard() {
                                 <div className="w-full sm:w-80 lg:w-96"><LevelProgress currentXP={userData.xp} rankData={currentRank} /></div>
                             </div>
                         </div>
+
+                        {/* Stats / Showcase */}
                         <div className="flex flex-col sm:flex-row gap-4 w-full xl:w-auto">
                             <div className="flex-1 sm:w-48 bg-white/5 backdrop-blur-md rounded-2xl p-4 border border-white/10 flex flex-col items-center justify-center hover:bg-white/10 transition-colors">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Latest Honors</span>
@@ -380,6 +284,7 @@ export default function Dashboard() {
             </div>
           )}
 
+          {/* ... (Keep existing Feed and Stories views) ... */}
           {currentView === 'feed' && (
              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
                 <div className="bg-white dark:bg-[#111625]/40 p-6 rounded-2xl border border-slate-200 dark:border-white/5 backdrop-blur-sm">

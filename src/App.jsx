@@ -1,6 +1,6 @@
 // src/App.jsx
 import React from "react";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom"; // Import useLocation
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom"; 
 import { AuthProvider } from "./contexts/AuthContext";
 
 import Home from "./pages/Home";
@@ -20,40 +20,27 @@ import AdminGuard from "./components/AdminGuard";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 
-
-// 👇 COMMENT THIS OUT LIKE THIS:
-// import UploadData from "./UploadData";
-
-
+// ❌ REMOVED: import NotificationStream... (This was causing the auto-popup)
 
 // ⚡ INTERNAL LAYOUT COMPONENT
-// This handles hiding the header/footer on specific pages
 function Layout() {
   const location = useLocation();
 
   // Define routes where we want the FULL SCREEN application feel
-  // (No global white header, no global footer, no extra padding)
   const isAppRoute = 
     location.pathname.startsWith("/dashboard") || 
     location.pathname.startsWith("/create-story") || 
     location.pathname.startsWith("/admin") || 
     location.pathname.startsWith("/profile") ||
-    location.pathname.startsWith("/story/"); // 👈 Fixed: Changed ; to || so this line works
+    location.pathname.startsWith("/story/"); 
   
     return (
     <>
-        
-    {/* 👇 COMMENT THIS OUT LIKE THIS: */}
-      {/*} <UploadData /> */}
+      {/* ❌ REMOVED: <NotificationStream /> */}
       
-
       {/* 1. Only show Global Header if NOT on an App Route */}
       {!isAppRoute && <Header />}
 
-      {/* 2. Conditional Styling:
-          - Normal Pages: Add 'pt-16' to push content below fixed header.
-          - App Pages: No padding, let the page handle its own full-screen layout.
-      */}
       <main className={isAppRoute ? "" : "pt-16 min-h-screen"}>
         <Routes>
           <Route path="/" element={<Home />} />
@@ -97,7 +84,6 @@ function Layout() {
               </ProtectedRoute>
             }
           />
-          {/* 👇 NEW ROUTE ADDED (For "Viewing Other Profiles") */}
           <Route
             path="/profile/:id"
             element={
@@ -124,7 +110,6 @@ export default function App() {
           v7_relativeSplatPath: true,
         }}
       >
-        {/* Render the Layout inside BrowserRouter so useLocation works */}
         <Layout />
       </BrowserRouter>
     </AuthProvider>
