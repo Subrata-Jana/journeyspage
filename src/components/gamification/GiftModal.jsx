@@ -5,16 +5,16 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase'; 
 import { useAuth } from '../../contexts/AuthContext'; 
 import { sendTribute } from '../../services/gamificationService'; 
-import { sendNotification } from '../../services/notificationService'; // 🔔 IMPORT THIS
 import toast from 'react-hot-toast';
 import * as LucideIcons from "lucide-react";
 
+// Helper to render icons safely
 const RenderIcon = ({ iconName, size = 24, className }) => {
     const Icon = LucideIcons[iconName] || LucideIcons.HelpCircle;
     return <Icon size={size} className={className} />;
 };
 
-export default function GiftModal({ isOpen, onClose, authorId, authorName, storyId }) {
+export default function GiftModal({ isOpen, onClose, authorId, authorName, storyId, storyTitle }) {
     const { user } = useAuth();
     const [step, setStep] = useState(1); 
     const [walletItems, setWalletItems] = useState([]);
@@ -32,6 +32,7 @@ export default function GiftModal({ isOpen, onClose, authorId, authorName, story
                 const data = docSnap.data();
                 const now = new Date();
                 
+                // Filter out expired items
                 const validItems = (data.inventory || []).filter(item => {
                     const expiresAt = new Date(item.expiresAt);
                     return expiresAt > now;
@@ -45,6 +46,7 @@ export default function GiftModal({ isOpen, onClose, authorId, authorName, story
         return () => unsub();
     }, [user, isOpen]);
 
+    // Helper to show time left
     const getTimeLeft = (isoString) => {
         const diff = new Date(isoString) - new Date();
         const hours = Math.ceil(diff / (1000 * 60 * 60));
@@ -52,36 +54,23 @@ export default function GiftModal({ isOpen, onClose, authorId, authorName, story
         return `${hours}h left`;
     };
 
+    // --- HANDLE SEND (UPDATED) ---
     const handleSend = async () => {
         if (!selectedItem) return;
         setSending(true);
         
-        const result = await sendTribute(user.uid, authorId, storyId, selectedItem, message);
+        // ⚡ Pass storyTitle to the service so it creates the notification automatically
+        const result = await sendTribute(user.uid, authorId, storyId, selectedItem, message, storyTitle);
         
         if (result.success) {
-            try {
-                await sendNotification({
-                    recipientId: authorId,
-                    type: 'gift',
-                    title: 'Reward Unlocked!',
-                    // The summary message
-                    message: `${user.displayName || "A Reader"} gifted you a ${selectedItem.name}!`, 
-                    link: `/profile`,
-                    // ⚡ NEW DATA FIELDS
-                    itemIcon: selectedItem.icon,       // e.g. "Wine"
-                    itemRarity: selectedItem.rarity,   // e.g. "LEGENDARY"
-                    itemName: selectedItem.name,       // e.g. "Royal Champagne"
-                    userNote: message                  // The personal text they wrote
-                });
-                
-                toast.success(`Sent ${selectedItem.name} to ${authorName}!`);
-                onClose();
-                setStep(1);
-                setSelectedItem(null);
-                setMessage("");
-            } catch (err) {
-                console.error("Notification failed", err);
-            }
+            // Notification is now handled inside the 'sendTribute' transaction.
+            // We just show success toast and close.
+            
+            toast.success(`Sent ${selectedItem.name} to ${authorName}!`);
+            onClose();
+            setStep(1);
+            setSelectedItem(null);
+            setMessage("");
         } else {
             toast.error(result.error || "Failed to send gift");
         }

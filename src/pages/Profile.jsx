@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom"; // Added useParams
 import { useAuth } from "../contexts/AuthContext";
 import { db, storage } from "../services/firebase";
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
@@ -20,8 +20,14 @@ import LevelBadge from "../components/premium/LevelBadge";
 import LevelProgress from "../components/premium/LevelProgress";
 
 export default function Profile() {
-  const { user } = useAuth();
+  const { user } = useAuth(); // Current logged-in user
   const navigate = useNavigate();
+  const { userId } = useParams(); // Get ID from URL if present
+
+  // Determine whose profile to show
+  const targetId = userId || user?.uid;
+  const isOwnProfile = user?.uid === targetId;
+
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("wallet"); // 'wallet' | 'showcase'
@@ -52,21 +58,23 @@ export default function Profile() {
 
   // Load Data
   useEffect(() => {
-    if (!user) return;
+    if (!targetId) return;
+
     const fetchData = async () => {
+      setLoading(true); // Reset loading on ID change
       try {
         // 1. Fetch User Profile
-        const userDocRef = doc(db, "users", user.uid);
+        const userDocRef = doc(db, "users", targetId);
         const userDoc = await getDoc(userDocRef);
         
         if (userDoc.exists()) {
           const data = userDoc.data();
           setProfileData({
-            name: data.name || user.displayName || "Traveler",
+            name: data.name || data.displayName || "Traveler",
             bio: data.bio || "Exploring the world, one story at a time.",
             location: data.location || "",
             website: data.website || "",
-            photoURL: data.photoURL || user.photoURL || "",
+            photoURL: data.photoURL || "",
             coverURL: data.coverURL || "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=2070&auto=format&fit=crop",
             facebook: data.facebook || "",
             instagram: data.instagram || "",
@@ -75,19 +83,20 @@ export default function Profile() {
             xp: data.xp || 0,
             badges: data.badges || [],
             inventory: data.inventory || [],
-            trophies: data.trophies || [] // New field for received gifts
+            trophies: data.trophies || [] 
           });
         } else {
+            // Handle profile not found
             setProfileData(prev => ({
                 ...prev,
-                name: user.displayName || "Traveler",
-                photoURL: user.photoURL || "",
+                name: "Unknown Traveler",
+                photoURL: "",
                 coverURL: "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=2070&auto=format&fit=crop"
             }));
         }
 
         // 2. Fetch Stories for Stats
-        const q = query(collection(db, "stories"), where("authorId", "==", user.uid));
+        const q = query(collection(db, "stories"), where("authorId", "==", targetId));
         const snap = await getDocs(q);
         
         let totalViews = 0, totalLikes = 0, totalShares = 0;
@@ -126,7 +135,7 @@ export default function Profile() {
       }
     };
     fetchData();
-  }, [user]);
+  }, [targetId]); // Re-run when ID changes
 
   // Helper: Clean URLs
   const cleanUrl = (url) => {
@@ -136,7 +145,7 @@ export default function Profile() {
   };
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!isOwnProfile) return; // Security check
     try {
       const updatedData = {
           ...profileData,
@@ -149,7 +158,7 @@ export default function Profile() {
       };
       
       setProfileData(updatedData);
-      await setDoc(doc(db, "users", user.uid), updatedData, { merge: true });
+      await setDoc(doc(db, "users", targetId), updatedData, { merge: true });
       setIsEditing(false);
       toast.success("Profile updated!");
     } catch (error) {
@@ -160,15 +169,16 @@ export default function Profile() {
 
   // Image Upload
   const handleImageUpload = async (e, field) => {
+    if (!isOwnProfile) return; // Security check
     const file = e.target.files[0];
     if (!file) return;
     const toastId = toast.loading("Uploading image...");
     try {
-      const storageRef = ref(storage, `users/${user.uid}/${field}_${Date.now()}`);
+      const storageRef = ref(storage, `users/${targetId}/${field}_${Date.now()}`);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
       setProfileData(prev => ({ ...prev, [field]: url }));
-      await setDoc(doc(db, "users", user.uid), { [field]: url }, { merge: true });
+      await setDoc(doc(db, "users", targetId), { [field]: url }, { merge: true });
       toast.success("Image updated!", { id: toastId });
     } catch (error) {
       console.error(error);
@@ -178,7 +188,7 @@ export default function Profile() {
 
   // Share Profile
   const handleShareProfile = () => {
-      const url = `${window.location.origin}/profile/${user.uid}`;
+      const url = `${window.location.origin}/profile/${targetId}`;
       navigator.clipboard.writeText(url);
       toast.success("Profile link copied!");
   };
@@ -198,10 +208,13 @@ export default function Profile() {
       <div className="relative h-64 md:h-80 group overflow-hidden">
         <img src={profileData.coverURL} alt="Cover" className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-black/20 to-transparent" />
-        <label className="absolute top-6 right-6 bg-black/50 hover:bg-black/70 text-white p-2 rounded-lg backdrop-blur-md cursor-pointer transition-all opacity-0 group-hover:opacity-100 border border-white/10">
-          <Camera size={20} />
-          <input type="file" hidden accept="image/*" onChange={(e) => handleImageUpload(e, 'coverURL')} />
-        </label>
+        
+        {isOwnProfile && (
+            <label className="absolute top-6 right-6 bg-black/50 hover:bg-black/70 text-white p-2 rounded-lg backdrop-blur-md cursor-pointer transition-all opacity-0 group-hover:opacity-100 border border-white/10">
+            <Camera size={20} />
+            <input type="file" hidden accept="image/*" onChange={(e) => handleImageUpload(e, 'coverURL')} />
+            </label>
+        )}
       </div>
 
       <div className="max-w-6xl mx-auto px-6 -mt-24 relative z-10">
@@ -217,10 +230,12 @@ export default function Profile() {
             <div className="absolute bottom-2 -right-2 z-20">
                 <LevelBadge rank={currentRank} size="lg" />
             </div>
-            <label className="absolute bottom-2 left-2 bg-orange-600 text-white p-2 rounded-full cursor-pointer shadow-lg hover:scale-110 transition-transform z-20 border border-black">
-              <Camera size={16} />
-              <input type="file" hidden accept="image/*" onChange={(e) => handleImageUpload(e, 'photoURL')} />
-            </label>
+            {isOwnProfile && (
+                <label className="absolute bottom-2 left-2 bg-orange-600 text-white p-2 rounded-full cursor-pointer shadow-lg hover:scale-110 transition-transform z-20 border border-black">
+                <Camera size={16} />
+                <input type="file" hidden accept="image/*" onChange={(e) => handleImageUpload(e, 'photoURL')} />
+                </label>
+            )}
           </div>
 
           {/* Info & Inputs */}
@@ -259,14 +274,14 @@ export default function Profile() {
               </div>
 
               <div className="flex gap-3 self-start md:self-center">
-                {isEditing ? (
-                  <button onClick={handleSave} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-emerald-900/20"><Save size={18}/> Save</button>
-                ) : (
-                  <>
-                    <button onClick={() => setIsEditing(true)} className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all backdrop-blur-md"><Edit2 size={18}/> Edit</button>
-                    <button onClick={handleShareProfile} className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-3 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all backdrop-blur-md" title="Share Profile"><Share2 size={18}/></button>
-                  </>
-                )}
+                {isOwnProfile ? (
+                    isEditing ? (
+                        <button onClick={handleSave} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-emerald-900/20"><Save size={18}/> Save</button>
+                    ) : (
+                        <button onClick={() => setIsEditing(true)} className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all backdrop-blur-md"><Edit2 size={18}/> Edit</button>
+                    )
+                ) : null}
+                <button onClick={handleShareProfile} className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-3 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all backdrop-blur-md" title="Share Profile"><Share2 size={18}/></button>
               </div>
             </div>
 
@@ -330,7 +345,7 @@ export default function Profile() {
                         onClick={() => setActiveTab("wallet")} 
                         className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'wallet' ? 'bg-white/10 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
                     >
-                        <Briefcase size={14}/> My Wallet
+                        <Briefcase size={14}/> {isOwnProfile ? "My Wallet" : "Wallet"}
                     </button>
                     <button 
                         onClick={() => setActiveTab("showcase")} 

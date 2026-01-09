@@ -4,7 +4,7 @@ import { db } from "../../services/firebase"; // Adjust path if needed
 import { useAuth } from "../../contexts/AuthContext"; // Adjust path if needed
 import { motion, AnimatePresence } from "framer-motion";
 import * as LucideIcons from "lucide-react";
-import { X, Sparkles } from "lucide-react";
+import { X, Sparkles, MapPin, User, Quote } from "lucide-react";
 
 // Helper to render dynamic icons
 const RenderIcon = ({ iconName, size = 48, className }) => {
@@ -124,41 +124,50 @@ export default function GiftOverlay() {
                     </motion.div>
                 </div>
 
-                {/* TEXT CONTENT */}
-                <div className="relative z-10 space-y-2">
-                    <motion.h3 
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.3 }}
-                        className="text-orange-500 font-bold uppercase tracking-widest text-xs"
-                    >
-                        Tribute Received!
-                    </motion.h3>
-                    
-                    <motion.h2 
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.4, type: "spring" }}
-                        className="text-3xl font-black text-white"
-                    >
-                        {activeGift.name}
-                    </motion.h2>
-                    
+            {/* TEXT CONTENT */}
+            <div className="relative z-10 space-y-1">
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 mb-2">
+                    <User size={12} className="text-orange-400"/>
+                    <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                        From {getSenderName(activeGift)}
+                    </span>
+                </motion.div>
+                
+                <motion.h2 
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.4, type: "spring" }}
+                    className="text-3xl font-black text-white"
+                >
+                    {activeGift.itemName}
+                </motion.h2>
+
+                {/* STORY CONTEXT */}
+                {activeGift.storyTitle && (
                     <motion.div 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        transition={{ delay: 0.6 }}
+                        transition={{ delay: 0.5 }}
+                        className="flex items-center justify-center gap-1.5 text-slate-400 text-sm mt-1"
                     >
-                        <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mt-2 border
-                            ${activeGift.rarity === 'LEGENDARY' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' : 
-                              activeGift.rarity === 'Uncommon' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 
-                              'bg-slate-500/10 text-slate-400 border-slate-500/20'}
-                        `}>
-                            {activeGift.rarity} Artifact
-                        </span>
+                        <span className="italic">for</span> 
+                        <span className="text-orange-400 font-bold max-w-[200px] truncate">"{activeGift.storyTitle}"</span>
                     </motion.div>
-                </div>
+                )}
 
+                {/* ✨ NEW: PERSONAL MESSAGE ✨ */}
+                {activeGift.userNote && (
+                    <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.6 }}
+                        className="mt-4 p-3 bg-white/5 border border-white/10 rounded-xl flex gap-2 items-start text-left mx-2"
+                    >
+                        <Quote size={14} className="text-slate-500 shrink-0 rotate-180 mt-0.5" />
+                        <p className="text-sm italic text-slate-300 line-clamp-3">"{activeGift.userNote}"</p>
+                    </motion.div>
+                )}
+        </div>
                 {/* BUTTON */}
                 <motion.button
                     initial={{ opacity: 0, y: 20 }}

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useContext, createContext, useRef } from "react";
+import { createPortal } from "react-dom"; // ⚡ IMPORT PORTAL
 import { useParams, useNavigate, useLocation } from "react-router-dom"; 
 import { 
   collection, doc, getDoc, getDocs, orderBy, query, updateDoc, onSnapshot, increment, addDoc, serverTimestamp 
@@ -17,14 +18,14 @@ import { db } from "../services/firebase";
 import { useMetaOptions } from "../hooks/useMetaOptions"; 
 import GallerySlider from "../components/GallerySlider"; 
 import { toggleStoryLike, toggleUserTrack, trackShare } from "../services/gamificationService";
-import { sendNotification } from "../services/notificationService"; // 🔔 IMPORTED
+import { sendNotification } from "../services/notificationService"; 
 import TreasureSpawner from "../components/premium/TreasureSpawner"; 
 import GiftModal from "../components/gamification/GiftModal";
 
 // --- CONTEXT FOR SMART REVIEW ---
 const ReviewContext = createContext();
 
-// --- HELPER: Get Color Hex from Name ---
+// --- HELPER: Get Color Hex ---
 const getColorHex = (name) => {
   const colors = {
     slate: '#64748b', red: '#ef4444', orange: '#f97316', amber: '#f59e0b',
@@ -60,6 +61,7 @@ export default function StoryDetail() {
   const [isTracking, setIsTracking] = useState(false);
   const [trackersCount, setTrackersCount] = useState(0); 
   const [hasLiked, setHasLiked] = useState(false);
+  const [isLiking, setIsLiking] = useState(false); // Prevents spam
   const [likeCount, setLikeCount] = useState(0);
   const [shareCount, setShareCount] = useState(0);
   
@@ -79,49 +81,31 @@ export default function StoryDetail() {
   // ✍️ AUTHOR EDIT MODE CHECK
   const [isAuthorView, setIsAuthorView] = useState(false);
 
-  // --- 👁️ ADVANCED VIEW COUNTER ("The Reader Test") ---
-  // A view only counts if: 5 seconds passed AND user scrolled > 150px
+  // --- 👁️ ADVANCED VIEW COUNTER ---
   const [minTimePassed, setMinTimePassed] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
   const viewTriggered = useRef(false);
 
-  // 1. Time Check (5 Seconds)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setMinTimePassed(true);
-    }, 5000); 
+    const timer = setTimeout(() => { setMinTimePassed(true); }, 5000); 
     return () => clearTimeout(timer);
   }, []);
 
-  // 2. Scroll Check (>150px)
   useEffect(() => {
-    const handleScroll = () => {
-      if (!hasScrolled && window.scrollY > 150) {
-        setHasScrolled(true);
-      }
-    };
+    const handleScroll = () => { if (!hasScrolled && window.scrollY > 150) setHasScrolled(true); };
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, [hasScrolled]);
 
-  // 3. Trigger View Count (Only once per session)
   useEffect(() => {
     if (!storyId || viewTriggered.current) return;
-
     if (minTimePassed && hasScrolled) {
         const sessionKey = `viewed_${storyId}`;
-        
-        // Check Session Storage to prevent F5 spam
         if (sessionStorage.getItem(sessionKey)) return;
-
         viewTriggered.current = true; 
         sessionStorage.setItem(sessionKey, "true"); 
-
         const storyRef = doc(db, "stories", storyId);
-        updateDoc(storyRef, {
-            views: increment(1)
-        }).then(() => console.log("👁️ Valid Read Counted!"))
-          .catch(e => console.error("View error:", e));
+        updateDoc(storyRef, { views: increment(1) }).catch(e => console.error(e));
     }
   }, [minTimePassed, hasScrolled, storyId]);
 
@@ -146,17 +130,14 @@ export default function StoryDetail() {
   // ⚡ DETECT RESUBMISSION
   const isResubmission = story?.status === 'pending' && story?.feedback && Object.keys(story.feedback).length > 0;
 
-  // --- FETCH STORY & AUTHOR & FEEDBACK ---
+  // --- FETCH STORY ---
   useEffect(() => {
     if (!storyId) return;
-
     async function fetchStoryAndAuthor() {
       try {
         const storyRef = doc(db, "stories", storyId);
         const storySnap = await getDoc(storyRef);
-
         if (!storySnap.exists()) { navigate("/dashboard"); return; }
-
         const storyData = storySnap.data();
         
         const isAuthor = currentUser?.uid === storyData.authorId;
@@ -165,22 +146,15 @@ export default function StoryDetail() {
 
         if (storyData.feedback) {
             const cleanFeedback = {};
-            Object.entries(storyData.feedback).forEach(([k, v]) => {
-                if (v && v.trim() !== "") cleanFeedback[k] = v;
-            });
+            Object.entries(storyData.feedback).forEach(([k, v]) => { if (v && v.trim() !== "") cleanFeedback[k] = v; });
             setFeedback(cleanFeedback);
         }
 
-        if (!storyData.published && !isAuthor && !isAdminView) {
-          navigate("/dashboard"); return;
-        }
+        if (!storyData.published && !isAuthor && !isAdminView) { navigate("/dashboard"); return; }
 
         setLikeCount(storyData.likeCount || (storyData.likes ? storyData.likes.length : 0));
         setShareCount(storyData.shareCount || 0);
-        
-        if (currentUser && storyData.likes && storyData.likes.includes(currentUser.uid)) {
-            setHasLiked(true);
-        }
+        if (currentUser && storyData.likes && storyData.likes.includes(currentUser.uid)) setHasLiked(true);
 
         if (storyData.authorId) {
             try {
@@ -190,9 +164,7 @@ export default function StoryDetail() {
                     setAuthorProfile(userData);
                     const realCount = userData.trackers ? userData.trackers.length : (userData.trackersCount || 0);
                     setTrackersCount(realCount);
-                    if (currentUser && userData.trackers && userData.trackers.includes(currentUser.uid)) {
-                        setIsTracking(true);
-                    }
+                    if (currentUser && userData.trackers && userData.trackers.includes(currentUser.uid)) setIsTracking(true);
                 }
             } catch (err) { console.error(err); }
         }
@@ -226,9 +198,7 @@ export default function StoryDetail() {
     if (!storyId) return;
     const commentsRef = collection(db, "stories", storyId, "comments");
     const q = query(commentsRef, orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-        setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    const unsubscribe = onSnapshot(q, (snapshot) => { setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); });
     return () => unsubscribe();
   }, [storyId]);
 
@@ -248,7 +218,6 @@ export default function StoryDetail() {
             setTrackersCount(previousCount);
             toast.error("Action failed");
         } else if (!previousTracking) {
-            // 🔔 NOTIFICATION TRIGGER
             sendNotification({
                 recipientId: story.authorId,
                 type: 'track',
@@ -261,65 +230,39 @@ export default function StoryDetail() {
     };
 
   const handleLike = async () => {
-    if (!currentUser) return toast.error("Please login to like stories");
-    
-    // 1. Optimistic UI Update (Instant Feedback)
-    const previousLiked = hasLiked;
-    const previousCount = likeCount;
-    setHasLiked(!hasLiked);
-    setLikeCount(prev => hasLiked ? prev - 1 : prev + 1);
+        if (!currentUser) return toast.error("Please login to like stories");
+        if (hasLiked) return; 
+        if (isLiking) return; 
+        
+        setIsLiking(true);
+        setHasLiked(true);
+        setLikeCount(prev => prev + 1);
 
-    // 2. Database Call
-    const result = await toggleStoryLike(story.id, currentUser.uid, story.authorId);
-    
-    if (result.success) {
-        // 3. 🛡️ SMART NOTIFICATION LOGIC
-        // Only proceed if:
-        // A. It is a "Like" action (not unlike)
-        // B. The user is not liking their own story
-        if (!previousLiked && currentUser.uid !== story.authorId) {
-            
-            // C. DE-DUPLICATION CHECK: Have we already notified them about this?
-            // We query the notifications collection for an existing 'like' from this user on this story.
-            try {
-                const checkQuery = query(
-                    collection(db, "notifications"),
-                    where("recipientId", "==", story.authorId),
-                    where("type", "==", "like"),
-                    where("link", "==", `/story/${story.id}`),
-                    // Check if the message contains the current user's name to ensure it's from them
-                    where("message", "==", `${currentUser.displayName || "A user"} liked "${story.title}"`) 
-                );
-                
-                const existingDocs = await getDocs(checkQuery);
-
-                // D. Only send if NO previous notification exists
-                if (existingDocs.empty) {
-                    await sendNotification({
+        try {
+            const result = await toggleStoryLike(story.id, currentUser.uid, story.authorId);
+            if (result.success) {
+                if (currentUser.uid !== story.authorId) {
+                    sendNotification({
                         recipientId: story.authorId,
                         type: 'like',
                         title: 'New Like',
                         message: `${currentUser.displayName || "A user"} liked "${story.title}"`,
                         link: `/story/${story.id}`
                     });
-                } else {
-                    console.log("Skipping duplicate notification");
                 }
-            } catch (err) {
-                console.error("Notification check failed", err);
+                toast.success(`Liked! (+5 XP)`); 
+            } else {
+                setHasLiked(false);
+                setLikeCount(prev => prev - 1);
+                toast.error("Action failed");
             }
+        } catch (error) {
+            setHasLiked(false);
+            setLikeCount(prev => prev - 1);
+        } finally {
+            setIsLiking(false);
         }
-        
-        // Show Toast only on the "Like" action, not unlike
-        if (!previousLiked) toast.success(`Liked! (+5 XP)`); 
-
-    } else {
-        // Revert on failure
-        setHasLiked(previousLiked);
-        setLikeCount(previousCount);
-        toast.error("Action failed");
-    }
-  };
+    };
 
   const handleGift = () => {
       if (!currentUser) return toast.error("Log in to send a Tribute!");
@@ -328,22 +271,15 @@ export default function StoryDetail() {
   };
 
   const handleShare = async () => {
-        const shareData = {
-            title: story.title,
-            text: `Check out this journey: ${story.title} by ${story.authorName}`,
-            url: window.location.href,
-        };
+        const shareData = { title: story.title, text: `Check out this journey: ${story.title} by ${story.authorName}`, url: window.location.href };
         if (navigator.share) {
             try {
                 await navigator.share(shareData);
                 if (currentUser) {
                     const result = await trackShare(story.id, currentUser.uid);
-                    if (result.success) {
-                        toast.success("Thanks for sharing! (+20 XP)");
-                        setShareCount(prev => prev + 1);
-                    }
+                    if (result.success) { toast.success("Thanks for sharing! (+20 XP)"); setShareCount(prev => prev + 1); }
                 }
-            } catch (err) { console.log("Share canceled", err); }
+            } catch (err) { console.log("Share canceled"); }
         } else {
             try {
                 await navigator.clipboard.writeText(window.location.href);
@@ -359,9 +295,7 @@ export default function StoryDetail() {
   const handlePostComment = async () => { 
     if(!newComment.trim()) return;
     if(!currentUser) return toast.error("Please login to comment");
-    
     setSubmittingComment(true);
-    
     try {
         await addDoc(collection(db, "stories", storyId, "comments"), {
             text: newComment,
@@ -370,8 +304,6 @@ export default function StoryDetail() {
             userPhoto: currentUser.photoURL || "",
             createdAt: serverTimestamp()
         });
-
-        // 🔔 NOTIFICATION TRIGGER
         if (currentUser.uid !== story.authorId) {
             await sendNotification({
                 recipientId: story.authorId,
@@ -381,15 +313,9 @@ export default function StoryDetail() {
                 link: `/story/${story.id}`
             });
         }
-
         setNewComment("");
         toast.success("Comment posted!");
-    } catch (e) {
-        console.error("Comment error", e);
-        toast.error("Failed to post comment");
-    } finally {
-        setSubmittingComment(false);
-    }
+    } catch (e) { toast.error("Failed to post comment"); } finally { setSubmittingComment(false); }
   };
 
   const toggleFeedback = (fieldId, comment) => {
@@ -404,33 +330,16 @@ export default function StoryDetail() {
 
   const processApprove = async () => {
     setIsSubmittingReview(true);
-    try {
-        await updateDoc(doc(db, "stories", storyId), {
-            status: 'approved', published: true, feedback: {}, adminNotes: ""
-        });
-        toast.success("Story Published Successfully!");
-        navigate("/admin");
-    } catch (error) { toast.error("Failed to approve"); } finally { setIsSubmittingReview(false); }
+    try { await updateDoc(doc(db, "stories", storyId), { status: 'approved', published: true, feedback: {}, adminNotes: "" }); toast.success("Story Published Successfully!"); navigate("/admin"); } catch (error) { toast.error("Failed to approve"); } finally { setIsSubmittingReview(false); }
   };
 
   const processReturn = async () => {
     setIsSubmittingReview(true);
-    try {
-        await updateDoc(doc(db, "stories", storyId), {
-            status: 'returned', published: false, feedback: feedback, adminNotes: "Please address the flagged issues."
-        });
-        toast.success("Story returned to author");
-        navigate("/admin");
-    } catch (error) { toast.error("Failed to return story"); } finally { setIsSubmittingReview(false); }
+    try { await updateDoc(doc(db, "stories", storyId), { status: 'returned', published: false, feedback: feedback, adminNotes: "Please address the flagged issues." }); toast.success("Story returned to author"); navigate("/admin"); } catch (error) { toast.error("Failed to return story"); } finally { setIsSubmittingReview(false); }
   };
 
   const handleEditRedirect = () => { navigate(`/create-story?edit=${storyId}`); };
-  const getYoutubeId = (url) => {
-    if(!url) return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
-  };
+  const getYoutubeId = (url) => { if(!url) return null; const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/; const match = url.match(regExp); return (match && match[2].length === 11) ? match[2] : null; };
 
   const categoryData = story?.category ? categories.find(c => c.value === story.category || c.label === story.category) : null;
   const tripTypeData = story?.tripType ? tripTypes.find(t => t.value === story.tripType || t.label === story.tripType) : null;
@@ -449,8 +358,6 @@ export default function StoryDetail() {
     <ReviewContext.Provider value={{ isAdminView, isAuthorView, feedback, toggleFeedback, isResubmission }}>
     <div className="bg-slate-50 dark:bg-[#0B0F19] min-h-screen pb-32 font-sans transition-colors duration-300 relative overflow-x-hidden">
       <Toaster position="bottom-center" />
-      
-      {/* 💎 TREASURE SPAWNER FOR READERS */}
       <TreasureSpawner /> 
 
       <motion.div className="fixed top-0 left-0 right-0 h-1.5 z-[100] bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 origin-left" style={{ scaleX }} />
@@ -539,9 +446,11 @@ export default function StoryDetail() {
         </div>
       </div>
 
+      {/* --- CONTENT GRID (Kept Same) --- */}
       <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-10 mt-0 lg:-mt-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
             
+            {/* AUTHOR CARD */}
             <div className="lg:col-span-4 space-y-6 md:space-y-8 h-fit lg:sticky lg:top-32 mt-6 lg:mt-32 order-1 lg:order-none">
                 <div className="bg-white dark:bg-[#151b2b] p-5 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] shadow-2xl border border-slate-100 dark:border-white/5 relative transition-colors duration-300">
                     <div className="flex items-center gap-3 md:gap-5 mb-6 md:mb-8">
@@ -563,9 +472,21 @@ export default function StoryDetail() {
                         </ReviewSection>
                     </div>
                     
-                    {/* 🎁 ACTION BUTTONS (GIFT ADDED) */}
+                    {/* 🎁 ACTION BUTTONS */}
                     <div className="flex gap-2 md:gap-3">
-                        <button onClick={handleLike} className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs md:text-sm ${hasLiked ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-500" : "bg-slate-100 dark:bg-white/5 text-slate-900 dark:text-white"}`}><Heart size={16} className={hasLiked ? "fill-current" : ""} /> <span>{hasLiked ? "Liked" : "Like"}</span></button>
+                        <button 
+                            onClick={handleLike} 
+                            disabled={hasLiked || isLiking}
+                            className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs md:text-sm shadow-sm border
+                                ${hasLiked 
+                                    ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-500 border-red-200 dark:border-red-500/20 cursor-default" 
+                                    : "bg-white dark:bg-white/5 text-slate-600 dark:text-white border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/10 hover:scale-[1.02]"
+                                }
+                            `}
+                        >
+                            <Heart size={16} className={`transition-all duration-300 ${hasLiked ? "fill-current scale-110" : ""}`} /> 
+                            <span>{hasLiked ? "Liked" : "Like"}</span>
+                        </button>
                         
                         <button onClick={handleGift} className="flex-1 py-3 rounded-xl bg-gradient-to-tr from-yellow-500 to-orange-500 text-white font-bold flex items-center justify-center gap-2 text-xs md:text-sm shadow-lg shadow-orange-500/20 hover:scale-[1.02] transition-transform"><Gift size={16}/> Gift</button>
 
@@ -579,6 +500,7 @@ export default function StoryDetail() {
                 </div>)}
             </div>
 
+            {/* ITINERARY */}
             <div className="lg:col-span-8 space-y-8 md:space-y-12 lg:mt-32 order-2 lg:order-none">
                 {days.map((day, i) => (
                     <ReviewSection key={i} id={`day_${day.dayNumber}`} label={`Day ${day.dayNumber}`}>
@@ -655,8 +577,8 @@ export default function StoryDetail() {
 
       {lightboxIndex !== -1 && <GallerySlider images={fullGallery} initialIndex={lightboxIndex} onClose={() => setLightboxIndex(-1)} />}
       
-      {/* 🎁 THE GIFT MODAL */}
-      <AnimatePresence>
+      {/* 🎁 GIFT MODAL */}
+        <AnimatePresence>
         {showGiftModal && (
             <GiftModal 
                 isOpen={showGiftModal} 
@@ -664,9 +586,10 @@ export default function StoryDetail() {
                 authorId={story.authorId}
                 authorName={story.authorName}
                 storyId={story.id}
+                storyTitle={story.title} // <--- 2. PASS TITLE HERE
             />
         )}
-      </AnimatePresence>
+        </AnimatePresence>
 
       {/* 🛡️ ADMIN FOOTER */}
       {isAdminView && (
@@ -708,7 +631,7 @@ export default function StoryDetail() {
   );
 }
 
-// 🛡️ SUB-COMPONENTS (Kept same for stability)
+// 🛡️ SUB-COMPONENTS (Uses PORTAL to avoid clipping)
 const ReviewSection = ({ id, label, children, className, flagPosition = "-right-3 -top-3" }) => {
     const { isAdminView, isAuthorView, feedback, toggleFeedback, isResubmission } = useContext(ReviewContext);
     const [isOpen, setIsOpen] = useState(false);
@@ -746,24 +669,66 @@ const ReviewSection = ({ id, label, children, className, flagPosition = "-right-
                 </button>
             )}
   
+            {/* ⚡ PORTAL: This pushes the Review Modal to the BODY, solving the half-hidden issue */}
             <AnimatePresence>
-                {isOpen && (
-                    <>
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsOpen(false)} className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[90]"/>
+                {isOpen && createPortal(
+                    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+                        {/* Backdrop */}
                         <motion.div 
-                            initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 10 }} 
-                            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-sm z-[100] md:absolute md:top-8 md:right-0 md:translate-x-0 md:translate-y-0 md:w-72 bg-[#1A1F2E] border border-white/10 rounded-xl shadow-2xl p-4"
+                            initial={{ opacity: 0 }} 
+                            animate={{ opacity: 1 }} 
+                            exit={{ opacity: 0 }} 
+                            onClick={() => setIsOpen(false)} 
+                            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        />
+                        
+                        {/* Modal Box */}
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }} 
+                            animate={{ opacity: 1, scale: 1, y: 0 }} 
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }} 
+                            className="relative w-full max-w-md bg-[#1A1F2E] border border-white/10 rounded-2xl shadow-2xl p-6"
                         >
-                            <div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-slate-400 uppercase truncate pr-4">{isResubmission ? "Verify Modification" : `Issue: ${label}`}</span><button onClick={() => setIsOpen(false)} className="p-1 hover:bg-white/10 rounded-full"><X size={16} className="text-slate-500 hover:text-white"/></button></div>
-                            <textarea className={`w-full h-32 md:h-24 bg-black/20 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-red-500 resize-none mb-3 ${!isAdminView ? 'cursor-not-allowed opacity-80' : ''}`} placeholder="Describe the issue explicitly..." value={comment} onChange={(e) => setComment(e.target.value)} autoFocus={isAdminView} readOnly={!isAdminView} />
-                            <div className="flex gap-2">
+                            <div className="flex justify-between items-center mb-4">
+                                <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">{isResubmission ? "Verify Modification" : `Issue: ${label}`}</span>
+                                <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-white/10 rounded-full"><X size={20} className="text-slate-500 hover:text-white"/></button>
+                            </div>
+                            
+                            <textarea 
+                                className={`w-full h-32 bg-black/20 border border-white/10 rounded-xl p-4 text-base text-white focus:outline-none focus:border-red-500 resize-none mb-6 ${!isAdminView ? 'cursor-not-allowed opacity-80' : ''}`} 
+                                placeholder="Describe the issue explicitly..." 
+                                value={comment} 
+                                onChange={(e) => setComment(e.target.value)} 
+                                autoFocus={isAdminView} 
+                                readOnly={!isAdminView} 
+                            />
+                            
+                            <div className="flex gap-3">
                                 {isAdminView ? (
-                                    <><button onClick={() => { if(!comment.trim()) return toast.error("Write comment"); toggleFeedback(id, comment); setIsOpen(false); toast.success("Flagged!"); }} className={`flex-1 py-2 rounded-lg text-white text-xs font-bold ${isResubmission ? 'bg-blue-600' : 'bg-red-600'}`}>Flag Issue</button>
-                                    {hasIssue && <button onClick={() => { toggleFeedback(id, null); setComment(""); setIsOpen(false); }} className="px-3 py-2 rounded-lg bg-green-600 text-white text-xs font-bold"><Check size={14}/></button>}</>
-                                ) : (<button onClick={() => setIsOpen(false)} className="w-full py-2 bg-slate-700 text-white rounded-lg text-xs font-bold">Close</button>)}
+                                    <>
+                                        <button 
+                                            onClick={() => { if(!comment.trim()) return toast.error("Write comment"); toggleFeedback(id, comment); setIsOpen(false); toast.success("Flagged!"); }} 
+                                            className={`flex-1 py-3 rounded-xl text-white font-bold transition-all hover:scale-[1.02] active:scale-95 ${isResubmission ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500'}`}
+                                        >
+                                            Flag Issue
+                                        </button>
+                                        
+                                        {hasIssue && (
+                                            <button 
+                                                onClick={() => { toggleFeedback(id, null); setComment(""); setIsOpen(false); }} 
+                                                className="px-4 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-500 transition-all"
+                                            >
+                                                <Check size={20}/>
+                                            </button>
+                                        )}
+                                    </>
+                                ) : (
+                                    <button onClick={() => setIsOpen(false)} className="w-full py-3 bg-slate-700 text-white rounded-xl font-bold hover:bg-slate-600 transition-all">Close</button>
+                                )}
                             </div>
                         </motion.div>
-                    </>
+                    </div>,
+                    document.body // Attached to body
                 )}
             </AnimatePresence>
         </div>

@@ -20,8 +20,6 @@ import AdminGuard from "./components/AdminGuard";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 
-// ❌ REMOVED: import NotificationStream... (This was causing the auto-popup)
-
 // ⚡ INTERNAL LAYOUT COMPONENT
 function Layout() {
   const location = useLocation();
@@ -36,8 +34,6 @@ function Layout() {
   
     return (
     <>
-      {/* ❌ REMOVED: <NotificationStream /> */}
-      
       {/* 1. Only show Global Header if NOT on an App Route */}
       {!isAppRoute && <Header />}
 
@@ -76,8 +72,10 @@ function Layout() {
               </ProtectedRoute>
             }
           />
+          
+          {/* UPDATED PROFILE ROUTES */}
           <Route
-            path="/profile"
+            path="/profile" // Own profile
             element={
               <ProtectedRoute>
                 <Profile />
@@ -85,7 +83,7 @@ function Layout() {
             }
           />
           <Route
-            path="/profile/:id"
+            path="/profile/:userId" // Other user's profile
             element={
               <ProtectedRoute>
                 <Profile />

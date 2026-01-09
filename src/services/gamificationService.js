@@ -9,11 +9,10 @@ import {
   query, 
   where, 
   getDocs, 
-  getDoc,
   serverTimestamp 
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { fetchGameRules, evaluateBadges, calculateRank, getCleanWallet, selectDailyReward } from "../utils/gameRules"; 
+import { fetchGameRules, getCleanWallet, selectDailyReward } from "../utils/gameRules"; 
 
 // --- DEFAULT CONFIGURATION ---
 const DEFAULT_POINTS = {
@@ -113,13 +112,10 @@ export const collectLoot = async (userId, lootItem) => {
     const userRef = doc(db, "users", userId);
     
     const xpValue = parseInt(lootItem.points) || 50;
-    
-    // Calculate Expiry Date based on Admin Rule or Default
     const expiryHours = parseInt(lootItem.expiryHours || (lootItem.rarity === 'LEGENDARY' ? 720 : 24)); 
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + expiryHours);
 
-    // Create the "Active Item" object
     const inventoryItem = {
         itemId: lootItem.id,
         name: lootItem.name,
@@ -142,37 +138,39 @@ export const collectLoot = async (userId, lootItem) => {
 };
 
 // ======================================================
-// 🎁 SEND TRIBUTE (The Exchange) - CRITICAL FOR STORY DETAIL
+// 🎁 SEND TRIBUTE (OPTIMIZED)
 // ======================================================
-export const sendTribute = async (senderId, authorId, storyId, item, message) => {
+// ⚠️ IMPORTANT: You must pass 'storyTitle' from the UI to avoid an extra DB Read.
+export const sendTribute = async (senderId, authorId, storyId, item, message, storyTitle) => {
   const senderRef = doc(db, "users", senderId);
   const authorRef = doc(db, "users", authorId);
   const storyRef = doc(db, "stories", storyId);
+  const notifRef = doc(collection(db, "notifications"));
 
   try {
     await runTransaction(db, async (transaction) => {
-      // 1. Get Sender Data to verify ownership
+      // 1. Get Sender Data
       const senderDoc = await transaction.get(senderRef);
       if (!senderDoc.exists()) throw "User not found";
       const senderData = senderDoc.data();
       
+      // FIX: Ensure we get a real name, fallback to "Unknown" only if absolutely necessary
+      const senderName = senderData.displayName || senderData.name || "A Traveler";
+
+      // ... (Keep existing Inventory/Trophy logic unchanged) ...
       const inventory = senderData.inventory || [];
-      // Find exact item instance by timestamp to handle duplicates correctly
       const itemIndex = inventory.findIndex(i => i.obtainedAt === item.obtainedAt && i.itemId === item.itemId);
-      
       if (itemIndex === -1) throw "Item no longer exists in wallet";
 
-      // 2. Get Author Data
       const authorDoc = await transaction.get(authorRef);
       if (!authorDoc.exists()) throw "Author not found";
       const authorData = authorDoc.data();
       let trophies = authorData.trophies || [];
 
-      // 3. Move Item
+      // Move Item Logic
       const newInventory = [...inventory];
-      newInventory.splice(itemIndex, 1); // Remove from sender
+      newInventory.splice(itemIndex, 1); 
 
-      // Add to Author
       const trophyIndex = trophies.findIndex(t => t.name === item.name);
       if (trophyIndex > -1) {
         trophies[trophyIndex].count = (trophies[trophyIndex].count || 1) + 1;
@@ -185,10 +183,29 @@ export const sendTribute = async (senderId, authorId, storyId, item, message) =>
         });
       }
 
-      // 4. Update Stats & XP
-      transaction.update(senderRef, { inventory: newInventory, xp: increment(50) }); // Giver Reward
-      transaction.update(authorRef, { trophies: trophies, xp: increment(100) });    // Receiver Reward
+      // Writes
+      transaction.update(senderRef, { inventory: newInventory, xp: increment(50) }); 
+      transaction.update(authorRef, { trophies: trophies, xp: increment(100) });    
       transaction.update(storyRef, { tributeCount: increment(1) });
+
+      // 6. CREATE NOTIFICATION (UPDATED)
+      transaction.set(notifRef, {
+        recipientId: authorId,
+        senderId: senderId,
+        senderName: senderName, // <--- SAVING NAME EXPLICITLY
+        type: 'gift',
+        itemName: item.name,
+        itemIcon: item.icon,     
+        itemRarity: item.rarity, 
+        storyTitle: storyTitle || "a story",
+        link: `/story/${storyId}`,
+        
+        // We still save a string message for fallback
+        message: `${senderName} gifted you a ${item.name}!`,
+        userNote: message,
+        read: false,
+        createdAt: serverTimestamp()
+      });
     });
 
     return { success: true };
@@ -252,6 +269,8 @@ export const processUserSession = async (userId) => {
 // ======================================================
 // 🏆 MASTER ENGINE: SYNC
 // ======================================================
+// WARNING: This function reads ALL stories by an author.
+// For large scale, consider moving this aggregation to a Cloud Function triggered on write.
 export const syncUserGamification = async (userId) => {
   const userRef = doc(db, "users", userId);
   try {
@@ -261,6 +280,7 @@ export const syncUserGamification = async (userId) => {
       if (!userDoc.exists()) throw "User not found";
       const userData = userDoc.data();
 
+      // PERFORMANCE NOTE: This query scales with the number of stories the user has.
       const storiesQ = query(collection(db, "stories"), where("authorId", "==", userId), where("status", "==", "approved"));
       const storiesSnap = await getDocs(storiesQ);
       
@@ -298,8 +318,6 @@ export const syncUserGamification = async (userId) => {
         }
       });
 
-      // RANK LOGIC
-      
       let eligibleRank = ranks.length > 0 ? ranks[0] : { name: "Tourist", minXP: 0 };
       for (let i = ranks.length - 1; i >= 0; i--) {
           if (newXP >= parseInt(ranks[i].threshold || ranks[i].minXP || 0)) { eligibleRank = ranks[i]; break; }
