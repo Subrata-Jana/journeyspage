@@ -2,10 +2,9 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence, useMotionValue, useMotionTemplate } from "framer-motion";
 import { 
   MapPin, UserPlus, UserCheck, Loader2, 
-  Mountain, Flag, Calendar, Wallet, ChevronRight, Clock 
+  Mountain, Flag, Calendar, Wallet, ChevronRight, Clock
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-// 👇 Imported getCountFromServer
 import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, updateDoc, arrayUnion, arrayRemove, getCountFromServer } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { useAuth } from "../contexts/AuthContext";
@@ -37,7 +36,7 @@ export default function Feed({ activeTab = "explore" }) {
     }
   }, [user]);
 
-  // --- 2. FETCH STORIES ---
+  // --- 2. FETCH STORIES (Optimized: No extra image fetching) ---
   useEffect(() => {
     const fetchStories = async () => {
       setLoading(true);
@@ -73,37 +72,19 @@ export default function Feed({ activeTab = "explore" }) {
         
         const fetchedStories = await Promise.all(querySnapshot.docs.map(async (docSnap) => {
             const data = docSnap.data();
-            let galleryImages = [];
-            let realDaysCount = 0; // Default count
+            let realDaysCount = 0; 
             
             try {
+                // We ONLY need the count now, not the images inside the days
                 const daysRef = collection(db, "stories", docSnap.id, "days");
-                
-                // 1. Get Images (Limit 3 for preview)
-                const daysSnap = await getDocs(query(daysRef, limit(3)));
-                const dayImages = daysSnap.docs.map(d => d.data().imageUrl).filter(Boolean);
-                galleryImages = [...dayImages];
-
-                // 2. ⚡ CALCULATE ACCURATE DURATION (Count Documents) ⚡
-                // This matches StoryDetails.jsx logic but is optimized for Feed
                 const snapshot = await getCountFromServer(daysRef);
                 realDaysCount = snapshot.data().count;
-
-            } catch (e) { console.log("Error fetching days data", e); }
-
-            if (data.gallery && Array.isArray(data.gallery)) {
-                 const galUrls = data.gallery.map(item => typeof item === 'string' ? item : item.url).filter(Boolean);
-                 galleryImages = [...galleryImages, ...galUrls];
-            }
-
-            const allImages = [data.coverImage, ...galleryImages].filter(Boolean);
-            const uniqueImages = [...new Set(allImages)];
+            } catch (e) { console.log("Error calculating days", e); }
 
             return {
                 id: docSnap.id,
                 ...data,
-                calculatedDuration: realDaysCount, // Pass the real count
-                previewImages: uniqueImages.length > 0 ? uniqueImages : null 
+                calculatedDuration: realDaysCount, 
             };
         }));
 
@@ -179,10 +160,9 @@ export default function Feed({ activeTab = "explore" }) {
   );
 }
 
-// --- 🖱️ NEON MAGNET CARD ---
+// --- 🖱️ NEON MAGNET CARD (Single Image Mode) ---
 function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, currentUser }) {
   const [imgError, setImgError] = useState(false);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(story.authorPhoto || story.authorImage || story.photoURL || null);
 
@@ -220,21 +200,8 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
   const authorInitials = authorName.substring(0, 2).toUpperCase();
   const showImage = avatarUrl && !imgError;
 
-  const images = story.previewImages && story.previewImages.length > 0 
-    ? story.previewImages 
-    : [story.coverImage || "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&q=80&w=1000"];
-
-  useEffect(() => {
-    let interval;
-    if (isHovering && images.length > 1) {
-        interval = setInterval(() => {
-            setCurrentImageIndex((prev) => (prev + 1) % images.length);
-        }, 1500);
-    } else {
-        setCurrentImageIndex(0);
-    }
-    return () => clearInterval(interval);
-  }, [isHovering, images.length]);
+  // ⚡ ONLY ONE IMAGE: THE COVER ⚡
+  const displayImage = story.coverImage || "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&q=80&w=1000";
 
   // ⚡ CALCULATED DATA ⚡
   const cost = story.totalCost ? `₹${parseInt(story.totalCost).toLocaleString()}` : "Free";
@@ -243,7 +210,6 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
   const tripType = story.tripType || null;
   
   // ⚡ ACCURATE DAYS COUNT ⚡
-  // Uses the real count fetched from server, defaults to 1 if missing
   const daysCount = story.calculatedDuration || (story.days ? story.days.length : 1);
 
   // Handlers
@@ -292,32 +258,24 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
 
       <div className="relative flex flex-col h-full bg-[#111827] dark:bg-[#0f172a] rounded-[1.4rem] z-10 m-[1px] overflow-hidden">
           
-          {/* 🖼️ IMAGE SECTION */}
+          {/* 🖼️ IMAGE SECTION (Single Image with Zoom Animation) */}
           <div className="relative w-full aspect-[4/4] overflow-hidden bg-slate-800">
-            <AnimatePresence mode="wait">
-                <motion.img 
-                key={currentImageIndex}
-                src={images[currentImageIndex]} 
+            <motion.img 
+                src={displayImage} 
                 alt={story.title} 
-                initial={{ opacity: 0.8 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0.8 }}
-                transition={{ duration: 0.5 }}
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                />
-            </AnimatePresence>
+                // ⚡ PREMIUM HOVER ANIMATION: Smooth Scale + Slight Brightness Bump
+                className="w-full h-full object-cover transition-all duration-700 ease-out group-hover:scale-110 group-hover:brightness-110"
+            />
             
             <div className="absolute inset-0 bg-gradient-to-t from-[#111827] via-transparent to-black/20 opacity-60" />
 
             {/* 🏷️ TOP BADGES */}
             <div className="absolute top-3 left-3 flex gap-2">
-                {/* 1. Trip Type */}
                 {tripType && (
                     <div className="px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                         <Flag size={10} className="text-orange-400"/> {tripType}
                     </div>
                 )}
-                {/* 2. Calculated Days (Glass Badge) */}
                 <div className="px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                     <Clock size={10} className="text-sky-400"/> {daysCount} Days
                 </div>
@@ -352,17 +310,14 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
 
             {/* 📊 STATS GRID */}
             <div className="grid grid-cols-3 gap-2 py-3 border-t border-slate-800 border-b border-slate-800 mb-4 bg-[#1f2937]/30 rounded-lg">
-                {/* 1. WHEN */}
                 <div className="flex flex-col items-center justify-center">
                     <span className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1"><Calendar size={10}/> When</span>
                     <span className="text-sm font-bold text-slate-200 truncate max-w-[80px]">{when}</span>
                 </div>
-                {/* 2. COST */}
                 <div className="flex flex-col items-center justify-center border-l border-slate-700">
                     <span className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1"><Wallet size={10}/> Cost</span>
                     <span className="text-sm font-bold text-slate-200">{cost}</span>
                 </div>
-                {/* 3. LEVEL */}
                 <div className="flex flex-col items-center justify-center border-l border-slate-700">
                     <span className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1"><Mountain size={10}/> Level</span>
                     <span className={`text-sm font-bold ${level === 'Hard' ? 'text-red-400' : 'text-emerald-400'}`}>

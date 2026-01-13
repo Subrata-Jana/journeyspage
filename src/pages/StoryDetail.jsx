@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useContext, createContext, useRef } from "react";
-import { createPortal } from "react-dom"; // ⚡ IMPORT PORTAL
+import { createPortal } from "react-dom"; 
 import { useParams, useNavigate, useLocation } from "react-router-dom"; 
 import { 
   collection, doc, getDoc, getDocs, orderBy, query, updateDoc, onSnapshot, increment, addDoc, serverTimestamp 
@@ -10,13 +10,14 @@ import {
   MapPin, Calendar, Flag, Mountain, Info, Lightbulb, User, 
   Utensils, BedDouble, Navigation, 
   ShieldAlert, Share2, Heart, Send, 
-  ArrowLeft, Sun, Moon, Footprints, Check, Globe2, AlertTriangle, Edit3, Hammer, SearchCheck, Gift, X, MessageSquare
+  ArrowLeft, Sun, Moon, Footprints, Check, Globe2, AlertTriangle, Edit3, Hammer, SearchCheck, Gift, X
 } from "lucide-react";
 import * as LucideIcons from "lucide-react"; 
 import toast, { Toaster } from "react-hot-toast"; 
 import { db } from "../services/firebase";
 import { useMetaOptions } from "../hooks/useMetaOptions"; 
 import GallerySlider from "../components/GallerySlider"; 
+import ThreeSixtyViewer from "../components/ThreeSixtyViewer"; // ⚡ IMPORTED 360 VIEWER
 import { toggleStoryLike, toggleUserTrack, trackShare } from "../services/gamificationService";
 import { sendNotification } from "../services/notificationService"; 
 import TreasureSpawner from "../components/premium/TreasureSpawner"; 
@@ -61,7 +62,7 @@ export default function StoryDetail() {
   const [isTracking, setIsTracking] = useState(false);
   const [trackersCount, setTrackersCount] = useState(0); 
   const [hasLiked, setHasLiked] = useState(false);
-  const [isLiking, setIsLiking] = useState(false); // Prevents spam
+  const [isLiking, setIsLiking] = useState(false); 
   const [likeCount, setLikeCount] = useState(0);
   const [shareCount, setShareCount] = useState(0);
   
@@ -127,7 +128,6 @@ export default function StoryDetail() {
   const { scrollYProgress } = useScroll();
   const scaleX = useSpring(scrollYProgress, { stiffness: 100, damping: 30, restDelta: 0.001 });
 
-  // ⚡ DETECT RESUBMISSION
   const isResubmission = story?.status === 'pending' && story?.feedback && Object.keys(story.feedback).length > 0;
 
   // --- FETCH STORY ---
@@ -180,6 +180,7 @@ export default function StoryDetail() {
         const allImages = [];
         if (storyData.coverImage) allImages.push({ url: storyData.coverImage, caption: storyData.coverImageCaption || "Cover Photo", is360: false });
         daysData.forEach(d => { if (d.imageUrl) allImages.push({ url: d.imageUrl, caption: d.imageCaption || `Day ${d.dayNumber}: ${d.title}`, is360: false }); });
+        
         if (storyData.gallery && Array.isArray(storyData.gallery)) {
             storyData.gallery.forEach(item => {
                 if (typeof item === 'string') allImages.push({ url: item, caption: "", is360: false });
@@ -362,6 +363,7 @@ export default function StoryDetail() {
 
       <motion.div className="fixed top-0 left-0 right-0 h-1.5 z-[100] bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 origin-left" style={{ scaleX }} />
 
+      {/* HEADER */}
       <div className="fixed top-6 left-0 right-0 px-4 md:px-8 z-[90] flex justify-between items-center pointer-events-none w-full max-w-[100vw] overflow-x-hidden">
           <button onClick={() => navigate(-1)} className="pointer-events-auto p-3 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 text-white hover:bg-black/40 hover:scale-105 transition-all shadow-lg group">
             <ArrowLeft size={24} className="group-hover:-translate-x-1 transition-transform"/>
@@ -375,6 +377,7 @@ export default function StoryDetail() {
           </div>
       </div>
 
+      {/* AUTHOR/ADMIN ALERTS */}
       {isAuthorView && (
           <div className="max-w-7xl mx-auto px-4 mt-24 mb-4">
               <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-4 text-center md:text-left">
@@ -399,6 +402,7 @@ export default function StoryDetail() {
         </div>
       )}
 
+      {/* HERO SECTION */}
       <div className="relative h-[85vh] md:h-[95vh] w-full bg-slate-900 overflow-hidden group">
         <ReviewSection id="coverImage" label="Cover Image" className="w-full h-full absolute inset-0" flagPosition="top-24 right-4">
             {story.coverImage ? (
@@ -446,7 +450,7 @@ export default function StoryDetail() {
         </div>
       </div>
 
-      {/* --- CONTENT GRID (Kept Same) --- */}
+      {/* --- CONTENT GRID --- */}
       <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-10 mt-0 lg:-mt-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
             
@@ -474,25 +478,12 @@ export default function StoryDetail() {
                     
                     {/* 🎁 ACTION BUTTONS */}
                     <div className="flex gap-2 md:gap-3">
-                        <button 
-                            onClick={handleLike} 
-                            disabled={hasLiked || isLiking}
-                            className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs md:text-sm shadow-sm border
-                                ${hasLiked 
-                                    ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-500 border-red-200 dark:border-red-500/20 cursor-default" 
-                                    : "bg-white dark:bg-white/5 text-slate-600 dark:text-white border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/10 hover:scale-[1.02]"
-                                }
-                            `}
-                        >
-                            <Heart size={16} className={`transition-all duration-300 ${hasLiked ? "fill-current scale-110" : ""}`} /> 
-                            <span>{hasLiked ? "Liked" : "Like"}</span>
+                        <button onClick={handleLike} disabled={hasLiked || isLiking} className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs md:text-sm shadow-sm border ${hasLiked ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-500 border-red-200 dark:border-red-500/20 cursor-default" : "bg-white dark:bg-white/5 text-slate-600 dark:text-white border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/10 hover:scale-[1.02]"}`}>
+                            <Heart size={16} className={`transition-all duration-300 ${hasLiked ? "fill-current scale-110" : ""}`} /> <span>{hasLiked ? "Liked" : "Like"}</span>
                         </button>
-                        
                         <button onClick={handleGift} className="flex-1 py-3 rounded-xl bg-gradient-to-tr from-yellow-500 to-orange-500 text-white font-bold flex items-center justify-center gap-2 text-xs md:text-sm shadow-lg shadow-orange-500/20 hover:scale-[1.02] transition-transform"><Gift size={16}/> Gift</button>
-
                         <button onClick={handleShare} className="flex-1 py-3 rounded-xl bg-[#0B0F19] dark:bg-white text-white dark:text-[#0B0F19] font-bold flex items-center justify-center gap-2 text-xs md:text-sm"><Share2 size={16}/> Share</button>
                     </div>
-
                 </div>
                 {(story.aboutPlace || story.specialNote) && (<div className="space-y-4">
                     {story.aboutPlace && (<ReviewSection id="aboutPlace" label="About"><div className="bg-orange-50/50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-500/10 p-5 rounded-2xl"><div className="flex items-center gap-2 text-orange-700 font-bold mb-2"><Info size={18}/> About</div><p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{story.aboutPlace}</p></div></ReviewSection>)}
@@ -500,7 +491,7 @@ export default function StoryDetail() {
                 </div>)}
             </div>
 
-            {/* ITINERARY */}
+            {/* ITINERARY LIST */}
             <div className="lg:col-span-8 space-y-8 md:space-y-12 lg:mt-32 order-2 lg:order-none">
                 {days.map((day, i) => (
                     <ReviewSection key={i} id={`day_${day.dayNumber}`} label={`Day ${day.dayNumber}`}>
@@ -514,11 +505,8 @@ export default function StoryDetail() {
                             </div>
                         )}
                         <div className="prose dark:prose-invert max-w-full"><p className="text-sm md:text-lg text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-line break-words">{day.story}</p></div>
-                        
                         {day.highlight && (<div className="mt-6 p-4 md:p-6 bg-slate-50 dark:bg-white/5 rounded-2xl border-l-4 border-orange-500 italic text-slate-600 dark:text-slate-300 text-sm md:text-base break-words"><span className="block text-orange-500 font-bold text-[10px] md:text-xs uppercase tracking-wider mb-2">Highlight</span>"{day.highlight}"</div>)}
-                        
                         {day.food && (<div className="mt-6 flex items-center gap-3 md:gap-4 p-4 rounded-2xl bg-gradient-to-r from-emerald-50/50 to-teal-50/50 dark:from-emerald-900/10 dark:to-teal-900/10 border border-emerald-100 dark:border-emerald-500/20"><div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white dark:bg-emerald-500/20 flex items-center justify-center shadow-sm shrink-0"><Utensils size={18} className="text-emerald-600 dark:text-emerald-400"/></div><div><div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-widest mb-0.5">On The Menu</div><div className="text-sm md:text-base font-bold text-slate-700 dark:text-slate-200">{day.food}</div></div></div>)}
-                        
                         {(day.departure || day.stay) && (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
                                 {day.departure && (<div className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-[#151b2b] border border-slate-100 dark:border-white/5 shadow-sm"><div className="p-2 bg-blue-50 dark:bg-blue-500/10 text-blue-500 rounded-lg"><Navigation size={18}/></div><div className="text-sm font-medium text-slate-700 dark:text-slate-200"><span className="block text-[10px] text-slate-400 uppercase font-bold">Route</span>{day.departure} → {day.destination}</div></div>)}
@@ -531,6 +519,7 @@ export default function StoryDetail() {
             </div>
         </div>
 
+        {/* YOUTUBE VIDEO */}
         {story.youtubeLink && getYoutubeId(story.youtubeLink) && (
             <ReviewSection id="youtubeLink" label="YouTube Video" className="mt-20 md:mt-24 max-w-5xl mx-auto w-full">
                 <div className="flex items-center gap-4 mb-6 md:mb-8 justify-center"><span className="w-8 md:w-16 h-1 bg-red-600 rounded-full"/><h3 className="text-xl md:text-4xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">The Experience</h3><span className="w-8 md:w-16 h-1 bg-red-600 rounded-full"/></div>
@@ -540,20 +529,38 @@ export default function StoryDetail() {
             </ReviewSection>
         )}
 
+        {/* ⚡ FIXED: GALLERY GRID (No more haphazard columns) */}
         {fullGallery.length > 0 && (
-            <ReviewSection id="gallery" label="Photo Gallery" className="mt-24 md:mt-32 max-w-[1400px] mx-auto px-0 md:px-6">
-                <div className="flex items-center justify-between mb-6 px-4 md:px-0"><h3 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">Visual Diary</h3><span className="text-slate-500 font-medium text-xs md:text-base">{fullGallery.length} Photos</span></div>
-                <div className="columns-2 md:columns-3 lg:columns-4 gap-3 md:gap-6 space-y-3 md:space-y-6 px-2 md:px-0">
+            <ReviewSection id="gallery" label="Photo Gallery" className="mt-24 md:mt-32 max-w-[1400px] mx-auto px-4 md:px-6">
+                <div className="flex items-center justify-between mb-6"><h3 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">Visual Diary</h3><span className="text-slate-500 font-medium text-xs md:text-base">{fullGallery.length} Photos</span></div>
+                
+                {/* ⚡ THE FIX: GRID LAYOUT */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {fullGallery.map((img, idx) => (
-                        <motion.div whileHover={{ y: -5 }} key={idx} onClick={() => setLightboxIndex(idx)} className="break-inside-avoid rounded-xl overflow-hidden cursor-zoom-in relative group shadow-lg w-full">
-                            <img src={img.url} alt="Gallery" className="w-full h-auto"/>
-                            {img.is360 && (<div className="absolute top-2 left-2 bg-blue-600/90 text-white text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm z-10"><Globe2 size={12} /> 360°</div>)}
+                        <motion.div 
+                            whileHover={{ y: -5, scale: 1.02 }} 
+                            key={idx} 
+                            onClick={() => setLightboxIndex(idx)} 
+                            className="relative aspect-square rounded-xl overflow-hidden cursor-zoom-in shadow-lg group border border-slate-200 dark:border-white/10"
+                        >
+                            <img src={img.url} alt="Gallery" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"/>
+                            
+                            {/* 360 Badge */}
+                            {img.is360 && (
+                                <div className="absolute top-2 left-2 bg-blue-600/90 text-white text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm z-10 shadow-lg">
+                                    <Globe2 size={12} className="animate-pulse" /> 360°
+                                </div>
+                            )}
+                            
+                            {/* Hover Overlay */}
+                            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </motion.div>
                     ))}
                 </div>
             </ReviewSection>
         )}
 
+        {/* COMMENTS SECTION */}
         <div className="mt-24 md:mt-32 max-w-4xl mx-auto px-4 md:px-6 border-t border-slate-200 dark:border-white/10 pt-16">
             <h3 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mb-8">Discussion ({comments.length})</h3>
             <div className="bg-white dark:bg-[#151b2b] p-3 rounded-2xl md:rounded-3xl border border-slate-200 dark:border-white/5 shadow-lg mb-10 md:mb-12 flex flex-col md:flex-row gap-4 items-start">
@@ -575,10 +582,26 @@ export default function StoryDetail() {
 
       </div>
 
-      {lightboxIndex !== -1 && <GallerySlider images={fullGallery} initialIndex={lightboxIndex} onClose={() => setLightboxIndex(-1)} />}
+      {/* ⚡ LIGHTBOX LOGIC: Detects 360 vs Regular Images */}
+      {lightboxIndex !== -1 && (
+        fullGallery[lightboxIndex]?.is360 ? (
+            <div className="fixed inset-0 z-[10000] bg-black w-full h-full">
+                <ThreeSixtyViewer 
+                    imageUrl={fullGallery[lightboxIndex].url} 
+                    onClose={() => setLightboxIndex(-1)} 
+                />
+            </div>
+        ) : (
+            <GallerySlider 
+                images={fullGallery} 
+                initialIndex={lightboxIndex} 
+                onClose={() => setLightboxIndex(-1)} 
+            />
+        )
+      )}
       
       {/* 🎁 GIFT MODAL */}
-        <AnimatePresence>
+      <AnimatePresence>
         {showGiftModal && (
             <GiftModal 
                 isOpen={showGiftModal} 
@@ -586,10 +609,10 @@ export default function StoryDetail() {
                 authorId={story.authorId}
                 authorName={story.authorName}
                 storyId={story.id}
-                storyTitle={story.title} // <--- 2. PASS TITLE HERE
+                storyTitle={story.title} 
             />
         )}
-        </AnimatePresence>
+      </AnimatePresence>
 
       {/* 🛡️ ADMIN FOOTER */}
       {isAdminView && (
@@ -631,7 +654,7 @@ export default function StoryDetail() {
   );
 }
 
-// 🛡️ SUB-COMPONENTS (Uses PORTAL to avoid clipping)
+// 🛡️ SUB-COMPONENTS
 const ReviewSection = ({ id, label, children, className, flagPosition = "-right-3 -top-3" }) => {
     const { isAdminView, isAuthorView, feedback, toggleFeedback, isResubmission } = useContext(ReviewContext);
     const [isOpen, setIsOpen] = useState(false);
@@ -669,58 +692,21 @@ const ReviewSection = ({ id, label, children, className, flagPosition = "-right-
                 </button>
             )}
   
-            {/* ⚡ PORTAL: This pushes the Review Modal to the BODY, solving the half-hidden issue */}
             <AnimatePresence>
                 {isOpen && createPortal(
                     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-                        {/* Backdrop */}
-                        <motion.div 
-                            initial={{ opacity: 0 }} 
-                            animate={{ opacity: 1 }} 
-                            exit={{ opacity: 0 }} 
-                            onClick={() => setIsOpen(false)} 
-                            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                        />
-                        
-                        {/* Modal Box */}
-                        <motion.div 
-                            initial={{ opacity: 0, scale: 0.9, y: 20 }} 
-                            animate={{ opacity: 1, scale: 1, y: 0 }} 
-                            exit={{ opacity: 0, scale: 0.9, y: 20 }} 
-                            className="relative w-full max-w-md bg-[#1A1F2E] border border-white/10 rounded-2xl shadow-2xl p-6"
-                        >
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm"/>
+                        <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="relative w-full max-w-md bg-[#1A1F2E] border border-white/10 rounded-2xl shadow-2xl p-6">
                             <div className="flex justify-between items-center mb-4">
                                 <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">{isResubmission ? "Verify Modification" : `Issue: ${label}`}</span>
                                 <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-white/10 rounded-full"><X size={20} className="text-slate-500 hover:text-white"/></button>
                             </div>
-                            
-                            <textarea 
-                                className={`w-full h-32 bg-black/20 border border-white/10 rounded-xl p-4 text-base text-white focus:outline-none focus:border-red-500 resize-none mb-6 ${!isAdminView ? 'cursor-not-allowed opacity-80' : ''}`} 
-                                placeholder="Describe the issue explicitly..." 
-                                value={comment} 
-                                onChange={(e) => setComment(e.target.value)} 
-                                autoFocus={isAdminView} 
-                                readOnly={!isAdminView} 
-                            />
-                            
+                            <textarea className={`w-full h-32 bg-black/20 border border-white/10 rounded-xl p-4 text-base text-white focus:outline-none focus:border-red-500 resize-none mb-6 ${!isAdminView ? 'cursor-not-allowed opacity-80' : ''}`} placeholder="Describe the issue explicitly..." value={comment} onChange={(e) => setComment(e.target.value)} autoFocus={isAdminView} readOnly={!isAdminView} />
                             <div className="flex gap-3">
                                 {isAdminView ? (
                                     <>
-                                        <button 
-                                            onClick={() => { if(!comment.trim()) return toast.error("Write comment"); toggleFeedback(id, comment); setIsOpen(false); toast.success("Flagged!"); }} 
-                                            className={`flex-1 py-3 rounded-xl text-white font-bold transition-all hover:scale-[1.02] active:scale-95 ${isResubmission ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500'}`}
-                                        >
-                                            Flag Issue
-                                        </button>
-                                        
-                                        {hasIssue && (
-                                            <button 
-                                                onClick={() => { toggleFeedback(id, null); setComment(""); setIsOpen(false); }} 
-                                                className="px-4 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-500 transition-all"
-                                            >
-                                                <Check size={20}/>
-                                            </button>
-                                        )}
+                                        <button onClick={() => { if(!comment.trim()) return toast.error("Write comment"); toggleFeedback(id, comment); setIsOpen(false); toast.success("Flagged!"); }} className={`flex-1 py-3 rounded-xl text-white font-bold transition-all hover:scale-[1.02] active:scale-95 ${isResubmission ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500'}`}>Flag Issue</button>
+                                        {hasIssue && (<button onClick={() => { toggleFeedback(id, null); setComment(""); setIsOpen(false); }} className="px-4 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-500 transition-all"><Check size={20}/></button>)}
                                     </>
                                 ) : (
                                     <button onClick={() => setIsOpen(false)} className="w-full py-3 bg-slate-700 text-white rounded-xl font-bold hover:bg-slate-600 transition-all">Close</button>
@@ -728,9 +714,9 @@ const ReviewSection = ({ id, label, children, className, flagPosition = "-right-
                             </div>
                         </motion.div>
                     </div>,
-                    document.body // Attached to body
+                    document.body 
                 )}
             </AnimatePresence>
         </div>
     );
-  };
+};

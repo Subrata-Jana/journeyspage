@@ -27,6 +27,7 @@ import { db, storage } from "../services/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useMetaOptions } from "../hooks/useMetaOptions";
 import { sendNotification } from "../services/notificationService";
+import DatePicker from "../components/ui/DatePicker";
 import LocationPicker from "../components/ui/LocationPicker";
 
 // --- HELPER: Get Color Hex from Name ---
@@ -202,24 +203,6 @@ export default function CreateStory() {
     const storageRef = ref(storage, path);
     await uploadBytes(storageRef, file);
     return await getDownloadURL(storageRef);
-  };
-
-  const handleDateChange = (e) => {
-    trackChange('month'); // Matches Admin 'meta' flag
-    const val = e.target.value;
-    if (!val) return setTrip({ ...trip, month: "" });
-    const [year, month] = val.split("-");
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    setTrip({ ...trip, month: `${monthNames[parseInt(month) - 1]}-${year}` });
-  };
-
-  const getInputValueFromMonth = (monthStr) => {
-    if (!monthStr || !monthStr.includes("-")) return "";
-    const [mon, year] = monthStr.split("-");
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const monthIndex = monthNames.indexOf(mon);
-    if (monthIndex === -1) return "";
-    return `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
   };
 
   // ⚡ HANDLER: Location Picker
@@ -523,7 +506,20 @@ export default function CreateStory() {
                 )}
               </div>
               
-              <InputGroup label="Journey Month" value={getInputValueFromMonth(trip.month)} onChange={handleDateChange} disabled={isFieldLocked('month')} type="month" feedback={feedback['month']} isModified={modifiedFields['month']} />
+              {/* ⚡ REPLACED: NEW DATE PICKER WITH TOOLTIP */}
+              <DatePicker 
+                  label="Journey Date" 
+                  value={trip.month} 
+                  onChange={(val) => { 
+                      setTrip({ ...trip, month: val }); 
+                      trackChange('month'); 
+                  }} 
+                  disabled={isFieldLocked('month')} 
+                  feedback={feedback['month']} 
+                  isModified={modifiedFields['month']}
+                  tooltip="Select the start date of your trip (DD/MM/YYYY)" 
+              />
+
               <InputGroup label="Total Cost (₹)" value={trip.totalCost} onChange={e => {setTrip({ ...trip, totalCost: e.target.value }); trackChange('cost');}} disabled={isFieldLocked('cost')} placeholder="e.g. 15000" type="number" feedback={feedback['cost']} isModified={modifiedFields['cost']} />
               
               <CustomSelect label="Trip Type" value={trip.tripType} onChange={(val) => {setTrip({ ...trip, tripType: val }); trackChange('tripType');}} options={tripTypes} disabled={isFieldLocked('tripType')} placeholder="Select Type..." feedback={feedback['tripType']} isModified={modifiedFields['tripType']} />

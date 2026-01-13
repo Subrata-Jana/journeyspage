@@ -4,10 +4,11 @@ import {
   Search, Settings, LogOut, Compass, Eye, Pencil, Trash2,
   Menu, X, Globe, Sun, Moon, MapPin, 
   AlertCircle, Clock, RotateCcw, CheckCircle,
-  Users, Zap, Share2
+  Users, Zap, Share2, MoreVertical, Heart, Calendar
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import toast, { Toaster } from "react-hot-toast";
+import { motion, useMotionTemplate, useMotionValue } from "framer-motion"; // ⚡ ADDED FRAMER MOTION
 
 import { useAuth } from "../contexts/AuthContext";
 import { db, storage } from "../services/firebase";
@@ -21,16 +22,12 @@ import { useGamification, RenderIcon } from "../hooks/useGamification";
 import LevelBadge from "../components/premium/LevelBadge";
 import LevelProgress from "../components/premium/LevelProgress";
 import { processUserSession } from "../services/gamificationService";
-// ❌ REMOVED: import GiftOverlay from "../components/gamification/GiftOverlay";
-import InteractionHub from "../components/dashboard/InteractionHub"; // 🔔 The Premium Bell
+import InteractionHub from "../components/dashboard/InteractionHub"; 
 
 export default function Dashboard() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
   
-  // ... (All your existing state variables: currentView, dashboardStats, userData, theme, etc.) ...
-  // (Paste all the state and useEffects from your previous Dashboard.jsx here - no changes needed to logic)
-  // ...
   const [currentView, setCurrentView] = useState("overview");
   const [stories, setStories] = useState([]); 
   const [loadingStories, setLoadingStories] = useState(true);
@@ -152,11 +149,9 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-[#0B0F19] text-slate-900 dark:text-white overflow-hidden font-sans transition-colors duration-300"> 
       
-      {/* ❌ GiftOverlay REMOVED - It won't popup automatically anymore */}
-      
       <Toaster position="bottom-right" toastOptions={{ style: { background: '#1e293b', color: '#fff', border: '1px solid #334155' } }} />
 
-      {/* SIDEBAR (unchanged) */}
+      {/* SIDEBAR */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-[#0B0F19]/95 backdrop-blur-2xl border-r border-slate-200 dark:border-white/5 p-6 flex flex-col transition-transform duration-300 lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center gap-3 mb-10 px-2 relative">
           {siteLogo ? (<img src={siteLogo} alt="Logo" className={`h-12 w-auto object-contain transition-all duration-300 ${theme === 'light' ? 'invert brightness' : ''}`} />) : (<div className="relative w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center text-white shadow-xl shadow-orange-500/20 border border-white/10"><Compass size={24} /></div>)}
@@ -207,7 +202,6 @@ export default function Dashboard() {
           </div>
           
           <div className="flex items-center gap-3">
-              {/* 🔔 THE NEW INTERACTION HUB (Small Bell, Big Power) */}
               <InteractionHub />
 
               <button onClick={toggleTheme} className="p-2.5 rounded-xl bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/10 hover:text-orange-500 hover:border-orange-500/30 transition-all shadow-sm" title="Switch Theme">
@@ -225,7 +219,7 @@ export default function Dashboard() {
           {currentView === 'overview' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 
-                {/* 1. PROFILE CARD (RESTORED TO FULL WIDTH) */}
+                {/* 1. PROFILE CARD */}
                 <div className="relative rounded-[2.5rem] p-8 md:p-10 overflow-hidden shadow-2xl group border border-white/5 bg-[#0f111a] flex flex-col justify-between">
                     <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-orange-500/20 via-[#0B0F19] to-[#0B0F19] z-0"/>
                     
@@ -284,7 +278,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* ... (Keep existing Feed and Stories views) ... */}
           {currentView === 'feed' && (
              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
                 <div className="bg-white dark:bg-[#111625]/40 p-6 rounded-2xl border border-slate-200 dark:border-white/5 backdrop-blur-sm">
@@ -347,11 +340,113 @@ const formatStoryDate = (story) => {
 };
 
 const getStatusConfig = (story) => { 
-    if (story.status === 'returned') return { label: "NEEDS REVISION", color: "bg-red-500/10 text-red-500 border-red-500/20", icon: <RotateCcw size={10} strokeWidth={3}/>, canEdit: true }; 
-    if (story.status === 'approved') return { label: "PUBLISHED", color: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20", icon: <CheckCircle size={10} strokeWidth={3}/>, canEdit: false }; 
-    if (story.published) return { label: "IN REVIEW", color: "bg-blue-500/10 text-blue-500 border-blue-500/20", icon: <Clock size={10} strokeWidth={3}/>, canEdit: false }; 
-    return { label: "DRAFT", color: "bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/20", icon: <FileText size={10} strokeWidth={3}/>, canEdit: true }; 
+    if (story.status === 'returned') return { label: "NEEDS REVISION", color: "bg-red-500 text-white border-red-600 shadow-red-500/30", icon: <RotateCcw size={12} strokeWidth={3}/>, canEdit: true }; 
+    if (story.status === 'approved') return { label: "PUBLISHED", color: "bg-emerald-500 text-white border-emerald-600 shadow-emerald-500/30", icon: <CheckCircle size={12} strokeWidth={3}/>, canEdit: false }; 
+    if (story.published) return { label: "IN REVIEW", color: "bg-blue-500 text-white border-blue-600 shadow-blue-500/30", icon: <Clock size={12} strokeWidth={3}/>, canEdit: false }; 
+    return { label: "DRAFT", color: "bg-slate-500 text-white border-slate-600", icon: <FileText size={12} strokeWidth={3}/>, canEdit: true }; 
 };
+
+// ⚡ PREMIUM STORY CARD ⚡
+function StoryCard({ story, navigate, onDelete }) {
+    const status = getStatusConfig(story);
+    const displayDate = formatStoryDate(story);
+    
+    // Mouse Position Logic for Neon Effect
+    let mouseX = useMotionValue(0);
+    let mouseY = useMotionValue(0);
+
+    function handleMouseMove({ currentTarget, clientX, clientY }) {
+        let { left, top } = currentTarget.getBoundingClientRect();
+        mouseX.set(clientX - left);
+        mouseY.set(clientY - top);
+    }
+
+    return (
+        <motion.div
+            layout
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            onMouseMove={handleMouseMove}
+            className="group relative bg-[#111827] dark:bg-[#0f172a] rounded-[1.5rem] border border-slate-800 shadow-xl cursor-pointer overflow-hidden h-full flex flex-col"
+            onClick={() => navigate(`/story/${story.id}`)}
+        >
+            {/* 🔦 NEON MAGNET EFFECT */}
+            <motion.div className="pointer-events-none absolute -inset-px rounded-[1.5rem] opacity-0 transition duration-300 group-hover:opacity-100" style={{ background: useMotionTemplate`radial-gradient(650px circle at ${mouseX}px ${mouseY}px, rgba(249, 115, 22, 0.15), transparent 80%)` }} />
+            <motion.div className="pointer-events-none absolute -inset-px rounded-[1.5rem] opacity-0 transition duration-300 group-hover:opacity-100" style={{ background: useMotionTemplate`radial-gradient(400px circle at ${mouseX}px ${mouseY}px, rgba(249, 115, 22, 0.4), transparent 40%)`, zIndex: 0 }} />
+
+            <div className="relative flex flex-col h-full bg-[#111827] dark:bg-[#0f172a] rounded-[1.4rem] z-10 m-[1px] overflow-hidden">
+                
+                {/* 🖼️ IMAGE SECTION */}
+                <div className="relative w-full aspect-[16/9] overflow-hidden bg-slate-800">
+                    {story.coverImage ? (
+                        <motion.img 
+                            src={story.coverImage} 
+                            alt={story.title} 
+                            className="w-full h-full object-cover transition-all duration-700 ease-out group-hover:scale-110 group-hover:brightness-110"
+                        />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-600"><ImageIcon size={48}/></div>
+                    )}
+                    
+                    {/* Dark Overlay Gradient */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#111827] via-transparent to-black/30 opacity-80" />
+
+                    {/* 🏷️ STATUS BADGE (Glassmorphism) */}
+                    <div className={`absolute top-3 right-3 px-2.5 py-1 rounded-full backdrop-blur-md border text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-lg ${status.color}`}>
+                        {status.icon} {status.label}
+                    </div>
+                </div>
+
+                {/* 📝 CONTENT BODY */}
+                <div className="flex flex-col flex-1 p-5">
+                    
+                    <h3 className="text-lg font-bold text-white leading-snug mb-1 line-clamp-1 group-hover:text-orange-400 transition-colors">
+                        {story.title || "Untitled Journey"}
+                    </h3>
+                    
+                    <div className="flex items-center gap-3 text-xs text-slate-400 font-medium mb-4">
+                        <div className="flex items-center gap-1"><MapPin size={12} className="text-orange-500 shrink-0" /> <span className="truncate max-w-[100px]">{story.location || "Unknown"}</span></div>
+                        <div className="w-1 h-1 bg-slate-600 rounded-full"/>
+                        <div className="flex items-center gap-1"><Calendar size={12} className="text-slate-500"/> {displayDate}</div>
+                    </div>
+
+                    {/* Stats Row */}
+                    <div className="grid grid-cols-3 gap-2 py-3 border-t border-slate-800 border-b border-slate-800 mb-4 bg-[#1f2937]/30 rounded-lg">
+                        <div className="flex flex-col items-center justify-center"><span className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1"><Heart size={10}/> Likes</span><span className="text-sm font-bold text-slate-200">{story.likeCount || (story.likes?.length || 0)}</span></div>
+                        <div className="flex flex-col items-center justify-center border-l border-slate-700"><span className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1"><Eye size={10}/> Views</span><span className="text-sm font-bold text-slate-200">{story.views || 0}</span></div>
+                        <div className="flex flex-col items-center justify-center border-l border-slate-700"><span className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1"><Share2 size={10}/> Shares</span><span className="text-sm font-bold text-slate-200">{story.shareCount || 0}</span></div>
+                    </div>
+
+                    {/* ⚠️ REJECTION NOTE */}
+                    {story.status === 'returned' && story.adminNotes && (
+                        <div className="mb-4 p-3 bg-red-900/20 border border-red-500/20 rounded-lg text-xs animate-pulse">
+                            <div className="flex items-center gap-1.5 text-red-400 font-bold mb-1"><AlertCircle size={12}/> Needs Attention:</div>
+                            <p className="text-red-200/80 leading-snug line-clamp-2">{story.adminNotes}</p>
+                        </div>
+                    )}
+
+                    {/* 🦶 ACTION FOOTER */}
+                    <div className="mt-auto flex items-center gap-2 pt-2">
+                        <button onClick={(e) => { e.stopPropagation(); navigate(`/story/${story.id}`) }} className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition-all border border-slate-700 hover:border-slate-600 flex items-center justify-center gap-2">
+                            <Eye size={14}/> View
+                        </button>
+                        
+                        {status.canEdit && (
+                            <>
+                                <button onClick={(e) => { e.stopPropagation(); navigate(`/create-story?edit=${story.id}`) }} className="p-2 bg-blue-600/10 hover:bg-blue-600 text-blue-500 hover:text-white rounded-lg transition-all border border-blue-600/20 hover:border-blue-600" title="Edit Story">
+                                    <Pencil size={16}/>
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); onDelete(story.id, story.status, story.published) }} className="p-2 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-lg transition-all border border-red-600/20 hover:border-red-600" title="Delete Story">
+                                    <Trash2 size={16}/>
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </motion.div>
+    );
+}
 
 function StoryRow({ story, navigate, onDelete }) { 
     const status = getStatusConfig(story); 
@@ -368,33 +463,8 @@ function StoryRow({ story, navigate, onDelete }) {
                 </div>
             </div>
             <div className="flex items-center gap-3">
-                <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-2 py-1 rounded border ${status.color}`}>{status.icon} {status.label}</span>
+                <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-2 py-1 rounded border ${status.color.replace('shadow-lg','').replace('text-white','text-current').replace('bg-','bg-opacity-10 bg-')}`}>{status.icon} {status.label}</span>
                 {status.canEdit && (<button onClick={() => navigate(`/create-story?edit=${story.id}`)} className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors"><Pencil size={16}/></button>)}
-            </div>
-        </div>
-    ) 
-}
-
-function StoryCard({ story, navigate, onDelete }) { 
-    const status = getStatusConfig(story); 
-    const displayDate = formatStoryDate(story);
-
-    return (
-        <div className={`group relative flex flex-col bg-white dark:bg-[#111625]/40 border rounded-2xl overflow-hidden transition-all hover:-translate-y-1 hover:shadow-xl ${story.status === 'returned' ? 'border-red-500/50 shadow-red-500/10' : 'border-slate-200 dark:border-white/5 hover:border-orange-500/30'}`}>
-            <div className="h-48 bg-slate-100 dark:bg-slate-800 relative overflow-hidden shrink-0">
-                {story.coverImage ? (<img src={story.coverImage} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="Cover" />) : (<div className="w-full h-full flex items-center justify-center text-slate-400"><ImageIcon size={32}/></div>)}
-                <div className="absolute top-3 right-3"><span className={`flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full backdrop-blur-md border ${status.color}`}>{status.icon} {status.label}</span></div>
-            </div>
-            <div className="p-5 flex-1 flex flex-col">
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1 truncate">{story.title || "Untitled Journey"}</h3>
-                <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-4">
-                    <Compass size={12}/> {story.location || "Unknown"} <span className="w-1 h-1 bg-slate-300 dark:bg-slate-600 rounded-full"/> {displayDate}
-                </div>
-                {story.status === 'returned' && story.adminNotes && (<div className="mb-4 p-3 bg-red-500/5 border border-red-500/10 rounded-lg text-xs"><div className="flex items-center gap-1.5 text-red-500 font-bold mb-1"><AlertCircle size={12}/> Needs Attention:</div><p className="text-slate-600 dark:text-slate-300 leading-snug">{story.adminNotes}</p></div>)}
-                <div className="mt-auto flex items-center justify-between border-t border-slate-200 dark:border-white/5 pt-4">
-                    <button onClick={() => navigate(`/story/${story.id}`)} className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 hover:bg-slate-100 dark:hover:bg-white/5 px-2 py-1 rounded-lg transition-colors"><Eye size={14}/> View</button>
-                    <div className="flex gap-1">{status.canEdit && (<><button onClick={() => navigate(`/create-story?edit=${story.id}`)} className={`p-2 rounded-lg transition-colors ${story.status === 'returned' ? 'text-white bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/30 animate-pulse' : 'text-blue-500 hover:bg-blue-500/10'}`} title="Edit Story"><Pencil size={14}/></button><button onClick={() => onDelete(story.id, story.status, story.published)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors" title="Delete Story"><Trash2 size={14}/></button></>)}</div>
-                </div>
             </div>
         </div>
     ) 

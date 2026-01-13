@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom"; // Added useParams
+import { useNavigate, useParams } from "react-router-dom"; 
 import { useAuth } from "../contexts/AuthContext";
 import { db, storage } from "../services/firebase";
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { 
   Camera, MapPin, Award, Edit2, Globe, BookOpen, Heart, 
-  Share2, Shield, Save, User, Link as LinkIcon, ArrowLeft,
+  Share2, Save, User, Link as LinkIcon, ArrowLeft,
   Facebook, Instagram, Youtube, Twitter, Gem, Lock, Eye, Clock, 
-  AlertTriangle, Gift, Briefcase
+  Gift, Briefcase
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from 'react-hot-toast';
@@ -95,8 +95,21 @@ export default function Profile() {
             }));
         }
 
-        // 2. Fetch Stories for Stats
-        const q = query(collection(db, "stories"), where("authorId", "==", targetId));
+        // 2. Fetch Stories for Stats (FIXED LOGIC HERE)
+        let q;
+        if (isOwnProfile) {
+            // If it's MY profile, show me everything (Drafts + Approved)
+            q = query(collection(db, "stories"), where("authorId", "==", targetId));
+        } else {
+            // If it's ANOTHER user, ONLY show Approved stories
+            // This prevents the permission error
+            q = query(
+                collection(db, "stories"), 
+                where("authorId", "==", targetId),
+                where("status", "==", "approved") 
+            );
+        }
+
         const snap = await getDocs(q);
         
         let totalViews = 0, totalLikes = 0, totalShares = 0;
@@ -135,7 +148,7 @@ export default function Profile() {
       }
     };
     fetchData();
-  }, [targetId]); // Re-run when ID changes
+  }, [targetId, isOwnProfile]); // Re-run when ID changes
 
   // Helper: Clean URLs
   const cleanUrl = (url) => {
