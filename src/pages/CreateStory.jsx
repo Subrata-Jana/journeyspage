@@ -18,7 +18,7 @@ import {
   deleteDoc,
   query,
   orderBy,
-  increment // ⚡ IMPORTED INCREMENT
+  increment 
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import imageCompression from 'browser-image-compression';
@@ -103,7 +103,9 @@ export default function CreateStory() {
   const [trip, setTrip] = useState({
     title: "", 
     location: "", 
-    locationData: null, // Added for LocationPicker
+    country: "", // 🆕 Added
+    state: "",   // 🆕 Added
+    locationData: null,
     month: "", totalCost: "",
     tripType: "", difficulty: "", category: "",
     aboutPlace: "", specialNote: "",
@@ -164,6 +166,8 @@ export default function CreateStory() {
         setTrip({
           title: data.title || "", 
           location: data.location || "",
+          country: data.country || "", // Load Country
+          state: data.state || "",     // Load State
           locationData: data.locationData || null, // Load location data
           month: data.month || "", totalCost: data.totalCost || "",
           tripType: data.tripType || "", difficulty: data.difficulty || "", category: data.category || "",
@@ -205,20 +209,28 @@ export default function CreateStory() {
     return await getDownloadURL(storageRef);
   };
 
-  // ⚡ HANDLER: Location Picker
+  // ⚡ HANDLER: Location Picker with State/Country Parsing
   const handleLocationSelect = (selectedOption) => {
-    trackChange('location'); // Track modification
+    trackChange('location'); 
     
-    // selectedOption is null if user clears the input
     if (!selectedOption) {
-        setTrip(prev => ({ ...prev, location: "", locationData: null }));
+        setTrip(prev => ({ ...prev, location: "", country: "", state: "", locationData: null }));
         return;
     }
+
+    // ⚡ PARSE LOCATION (Assumes format: "City, State, Country")
+    const parts = selectedOption.label.split(",").map(p => p.trim());
     
+    const city = parts[0];
+    const country = parts.length > 1 ? parts[parts.length - 1] : "";
+    const state = parts.length > 2 ? parts[parts.length - 2] : "";
+
     setTrip(prev => ({
         ...prev,
-        location: selectedOption.label.split(",")[0], // Just the city name for display (e.g. "Sandakphu")
-        locationData: selectedOption // Save full data for stats
+        location: city,
+        country: country, // 🆕 Store Country
+        state: state,     // 🆕 Store State
+        locationData: selectedOption 
     }));
   };
 
@@ -307,6 +319,7 @@ export default function CreateStory() {
     if (isSubmitting) return;
     if (!trip.title.trim()) return alert("Story title is required!");
 
+    // 1. Validation for Publishing
     if (publish) {
         const errors = validateForPublish();
         if (errors.length > 0) {
@@ -316,15 +329,18 @@ export default function CreateStory() {
         }
     }
 
+    // 2. Determine Status
     let targetStatus = 'draft';
     let isPublished = false;
 
     if (publish) {
+        // If "Publish" or "Submit Revisions" is clicked -> Send to Pending
         targetStatus = 'pending';
-        isPublished = true;
+        isPublished = false; // "Published" is false until Admin approves it
     } else {
+        // If "Save Draft" is clicked
         if (storyStatus === 'returned') {
-            targetStatus = 'returned';
+            targetStatus = 'returned'; // Keep as returned so they can keep editing
         }
     }
 
@@ -334,6 +350,7 @@ export default function CreateStory() {
 
       let activeId = storyId; 
       
+      // 3. Create Doc if New
       if (!activeId) {
         const newDoc = await addDoc(collection(db, "stories"), { 
             title: trip.title, location: trip.location, authorId: user.uid,
@@ -344,6 +361,7 @@ export default function CreateStory() {
         setStoryId(activeId); 
       }
 
+      // 4. Handle Images
       let coverUrl = trip.coverImage;
       if (trip.coverImageFile) coverUrl = await uploadImage(`stories/${activeId}/cover.jpg`, trip.coverImageFile);
 
@@ -355,48 +373,68 @@ export default function CreateStory() {
         finalGallery.push({ url: itemUrl, caption: item.caption || "", is360: item.is360 || false });
       }
 
+      // ⚡ CRITICAL FIX: CLEAN UP FEEDBACK ⚡
+      // If we are submitting for review, clear the error flags for fields the user fixed.
+      let updatedFeedback = { ...feedback };
+      
+      if (targetStatus === 'pending') {
+          // If the user modified a field, REMOVE the error flag for it
+          Object.keys(modifiedFields).forEach(field => {
+              if (modifiedFields[field] === true) {
+                  delete updatedFeedback[field]; 
+              }
+          });
+      }
+
+      // 5. Prepare Update Payload
       const updatePayload = {
         title: trip.title, 
         location: trip.location, 
-        locationData: trip.locationData || null, // Save Location Data
+        country: trip.country || "",
+        state: trip.state || "",
+        locationData: trip.locationData || null,
         month: trip.month, totalCost: trip.totalCost,
         tripType: trip.tripType, difficulty: trip.difficulty, category: trip.category,
         aboutPlace: trip.aboutPlace, specialNote: trip.specialNote,
         youtubeLink: trip.enableYoutube ? trip.youtubeLink : "",
-        authorId: user.uid, authorName: userProfile?.name || "Explorer",
-        published: isPublished,
+        authorId: user.uid, 
+        authorName: userProfile?.name || "Explorer",
+        authorPhoto: userProfile?.photoURL || userProfile?.avatarUrl || "",
+        authorRank: userProfile?.currentRank?.name || "Scout",
+        
+        published: false, 
         status: targetStatus,
         coverImage: coverUrl, coverImageCaption: trip.coverImageCaption || "",
         gallery: finalGallery, updatedAt: serverTimestamp(),
-        modifiedFlags: modifiedFields 
+        
+        // Save the cleaned feedback and flags
+        modifiedFlags: modifiedFields, 
+        feedback: updatedFeedback 
       };
 
-      // ⚡ TRACK REVISIONS AUTOMATICALLY
       if (publish || isReturned) {
           updatePayload.revisionCount = increment(1);
       }
 
-      // 1. Update the Main Story Document
+      // 6. Update Firestore
       await updateDoc(doc(db, "stories", activeId), updatePayload);
 
-      // ⚡ ADDED: NOTIFICATION LOGIC
-      // If this is a publish action or a resubmission (isReturned), notify Admin
+      // 7. Notify Admin
       if (publish || isReturned) {
           await sendNotification({
-              recipientId: 'admin', // Send to Admin Dashboard
+              recipientId: 'admin', 
               type: 'info',
               title: 'Story Revision Submitted',
-              message: `${userProfile?.name || 'An author'} has updated "${trip.title}". Revision #${(trip.revisionCount || 0) + 1}.`,
-              link: `/admin` // Or specific review link
+              message: `${userProfile?.name || 'An author'} has updated "${trip.title}".`,
+              link: `/story/${activeId}?adminView=true`
           });
       }
 
-      // 2. Wipe and Replace "Days" Sub-collection
+      // 8. Replace Days Subcollection
       const oldDays = await getDocs(collection(db, "stories", activeId, "days"));
       const deletePromises = oldDays.docs.map(d => deleteDoc(d.ref));
       await Promise.all(deletePromises);
 
-      // 3. Add New Days
       for (let i = 0; i < trip.days.length; i++) {
         let dayImg = trip.days[i].imagePreview; 
         if (trip.days[i].imageFile) {

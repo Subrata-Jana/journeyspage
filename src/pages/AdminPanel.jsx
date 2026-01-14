@@ -634,8 +634,8 @@ function ManageLoot({ isDark }) {
     const [loading, setLoading] = useState(true);
     const [editingId, setEditingId] = useState(null);
     
-    // Default State
-    const defaultForm = { name: "", category: "plane", rarity: "Common", icon: "Circle", expiryHours: 24, description: "" };
+    // ⚡ ADDED 'points' TO DEFAULT STATE
+    const defaultForm = { name: "", category: "plane", rarity: "Common", icon: "Circle", expiryHours: 24, points: 50, description: "" };
     const [formData, setFormData] = useState(defaultForm);
     
     const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
@@ -670,13 +670,13 @@ function ManageLoot({ isDark }) {
             rarity: item.rarity,
             icon: item.icon || "Circle",
             expiryHours: item.expiryHours || 24,
+            points: item.points || 50, // ⚡ LOAD EXISTING POINTS
             description: item.description || ""
         });
         setEditingId(item.id);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    // ⚡ CANCEL / CLEAR FUNCTION
     const handleCancel = () => {
         setEditingId(null);
         setFormData(defaultForm);
@@ -684,6 +684,8 @@ function ManageLoot({ isDark }) {
   
     const handleSave = async () => {
       if (!formData.name) return toast.error("Enter a name!");
+      
+      // Auto-calculate chance based on rarity if not manually set (simplified logic)
       let chance = 60;
       if (formData.rarity === "Uncommon") chance = 90;
       if (formData.rarity === "LEGENDARY") chance = 100;
@@ -698,6 +700,7 @@ function ManageLoot({ isDark }) {
           chance: chance, 
           icon: formData.icon,
           expiryHours: parseInt(formData.expiryHours) || 24,
+          points: parseInt(formData.points) || 10, // ⚡ SAVE POINTS TO DB
           description: formData.description || "A special gift for a special story."
       };
 
@@ -710,7 +713,7 @@ function ManageLoot({ isDark }) {
   
       try {
         await setDoc(doc(db, "meta", "loot"), { items: updatedList });
-        handleCancel(); // Clear form after save
+        handleCancel(); 
         setIsIconPickerOpen(false); 
         toast.success(editingId ? "Artifact Updated!" : "Artifact Created!");
       } catch (error) {
@@ -728,7 +731,6 @@ function ManageLoot({ isDark }) {
     const renderIcon = (iconName) => {
         if (!iconName) return <HelpCircle size={18} />;
         const IconComponent = LucideIcons[iconName];
-        // If icon exists in library, render it. Otherwise, fallback.
         return IconComponent ? <IconComponent size={18} /> : <HelpCircle size={18} />;
     };
 
@@ -791,12 +793,22 @@ function ManageLoot({ isDark }) {
                 </div>
             </div>
 
-            <div className="mb-4">
-              <label className="block text-slate-400 text-xs mb-1 font-bold uppercase">Expires In (Hours)</label>
-              <div className="relative">
-                  <input type="number" min="1" className={inputClass} placeholder="24" value={formData.expiryHours} onChange={(e) => setFormData({...formData, expiryHours: e.target.value})} />
-                  <Clock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"/>
-              </div>
+            {/* ⚡ NEW INPUTS FOR EXPIRY AND POINTS */}
+            <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label className="block text-slate-400 text-xs mb-1 font-bold uppercase">Expires In (Hrs)</label>
+                    <div className="relative">
+                        <input type="number" min="1" className={inputClass} placeholder="24" value={formData.expiryHours} onChange={(e) => setFormData({...formData, expiryHours: e.target.value})} />
+                        <Clock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"/>
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-slate-400 text-xs mb-1 font-bold uppercase">XP Value</label>
+                    <div className="relative">
+                        <input type="number" min="0" className={inputClass} placeholder="50" value={formData.points} onChange={(e) => setFormData({...formData, points: e.target.value})} />
+                        <Award size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"/>
+                    </div>
+                </div>
             </div>
 
             <div className="mb-6 relative" ref={pickerRef}>
@@ -826,7 +838,6 @@ function ManageLoot({ isDark }) {
               )}
             </div>
             
-            {/* ⚡ BUTTON GROUP: Cancel is always visible */}
             <div className="flex gap-2">
                 <button 
                     onClick={handleCancel} 
@@ -870,6 +881,12 @@ function ManageLoot({ isDark }) {
                                       <p className="text-[10px] text-slate-500 truncate">{item.description}</p>
                                       <div className="flex items-center gap-2 mt-0.5">
                                           <span className={`text-[9px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider ${isDark ? 'bg-white/10 text-slate-400' : 'bg-slate-200 text-slate-600'}`}>{item.rarity}</span>
+                                          
+                                          {/* ⚡ DISPLAY XP IN LIST */}
+                                          <span className="text-[9px] text-yellow-500 font-bold flex items-center gap-0.5 bg-yellow-500/10 px-1.5 py-0.5 rounded">
+                                              <Award size={10}/> {item.points || (item.rarity === 'LEGENDARY' ? 500 : item.rarity === 'Uncommon' ? 50 : 10)} XP
+                                          </span>
+
                                           {item.expiryHours && (
                                               <p className="text-[9px] text-orange-400 font-mono flex items-center gap-0.5 bg-orange-500/10 px-1.5 py-0.5 rounded" title="Time to Live">
                                                   <Clock size={10}/> {item.expiryHours}h

@@ -8,7 +8,7 @@ import {
   Camera, MapPin, Award, Edit2, Globe, BookOpen, Heart, 
   Share2, Save, User, Link as LinkIcon, ArrowLeft,
   Facebook, Instagram, Youtube, Twitter, Gem, Lock, Eye, Clock, 
-  Gift, Briefcase
+  Gift, Briefcase, Sun, Moon // Added Sun/Moon
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from 'react-hot-toast';
@@ -31,6 +31,26 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("wallet"); // 'wallet' | 'showcase'
+
+  // 🌓 THEME STATE MANAGEMENT
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("theme") === "dark" || 
+        (!("theme" in localStorage) && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    }
+    return true; // Default to dark
+  });
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (isDark) { 
+        root.classList.add("dark"); 
+        localStorage.setItem("theme", "dark"); 
+    } else { 
+        root.classList.remove("dark"); 
+        localStorage.setItem("theme", "light"); 
+    }
+  }, [isDark]);
   
   // Profile Data
   const [profileData, setProfileData] = useState({
@@ -95,14 +115,11 @@ export default function Profile() {
             }));
         }
 
-        // 2. Fetch Stories for Stats (FIXED LOGIC HERE)
+        // 2. Fetch Stories for Stats
         let q;
         if (isOwnProfile) {
-            // If it's MY profile, show me everything (Drafts + Approved)
             q = query(collection(db, "stories"), where("authorId", "==", targetId));
         } else {
-            // If it's ANOTHER user, ONLY show Approved stories
-            // This prevents the permission error
             q = query(
                 collection(db, "stories"), 
                 where("authorId", "==", targetId),
@@ -148,7 +165,7 @@ export default function Profile() {
       }
     };
     fetchData();
-  }, [targetId, isOwnProfile]); // Re-run when ID changes
+  }, [targetId, isOwnProfile]); 
 
   // Helper: Clean URLs
   const cleanUrl = (url) => {
@@ -158,7 +175,7 @@ export default function Profile() {
   };
 
   const handleSave = async () => {
-    if (!isOwnProfile) return; // Security check
+    if (!isOwnProfile) return; 
     try {
       const updatedData = {
           ...profileData,
@@ -182,7 +199,7 @@ export default function Profile() {
 
   // Image Upload
   const handleImageUpload = async (e, field) => {
-    if (!isOwnProfile) return; // Security check
+    if (!isOwnProfile) return; 
     const file = e.target.files[0];
     if (!file) return;
     const toastId = toast.loading("Uploading image...");
@@ -206,24 +223,29 @@ export default function Profile() {
       toast.success("Profile link copied!");
   };
 
-  if (loading || gameLoading) return <div className="min-h-screen bg-[#0B0F19] text-white flex items-center justify-center">Loading Passport...</div>;
+  if (loading || gameLoading) return <div className="min-h-screen bg-slate-50 dark:bg-[#0B0F19] text-slate-500 dark:text-slate-400 flex items-center justify-center">Loading Passport...</div>;
 
   return (
-    <div className="min-h-screen bg-[#0B0F19] text-white font-sans pb-20">
-      <Toaster position="bottom-right" toastOptions={{ style: { background: '#1e293b', color: '#fff', border: '1px solid #334155' } }} />
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0B0F19] text-slate-900 dark:text-white font-sans pb-20 transition-colors duration-300">
+      <Toaster position="bottom-right" toastOptions={{ style: { background: isDark ? '#1e293b' : '#fff', color: isDark ? '#fff' : '#0f172a', border: '1px solid #334155' } }} />
 
-      {/* NAVIGATION */}
-      <button onClick={() => navigate('/dashboard')} className="fixed top-6 left-6 z-50 bg-black/50 backdrop-blur-md border border-white/10 text-white px-4 py-2 rounded-full flex items-center gap-2 hover:bg-white/10 transition-all hover:scale-105">
-        <ArrowLeft size={18} /> Back to Dashboard
-      </button>
+      {/* NAVIGATION & THEME TOGGLE */}
+      <div className="fixed top-6 left-6 z-50 flex gap-3">
+        <button onClick={() => navigate('/dashboard')} className="bg-white/80 dark:bg-black/50 backdrop-blur-md border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white px-4 py-2 rounded-full flex items-center gap-2 hover:scale-105 transition-all shadow-sm">
+            <ArrowLeft size={18} /> Back to Dashboard
+        </button>
+        <button onClick={() => setIsDark(!isDark)} className="bg-white/80 dark:bg-black/50 backdrop-blur-md border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white p-2 rounded-full hover:scale-110 transition-all shadow-sm">
+            {isDark ? <Sun size={18} className="text-yellow-400"/> : <Moon size={18} className="text-slate-600"/>}
+        </button>
+      </div>
 
       {/* HERO */}
       <div className="relative h-64 md:h-80 group overflow-hidden">
-        <img src={profileData.coverURL} alt="Cover" className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-black/20 to-transparent" />
+        <img src={profileData.coverURL} alt="Cover" className="w-full h-full object-cover opacity-90 dark:opacity-80 group-hover:scale-105 transition-transform duration-700" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-50 via-transparent to-transparent dark:from-[#0B0F19] dark:via-black/20 dark:to-transparent" />
         
         {isOwnProfile && (
-            <label className="absolute top-6 right-6 bg-black/50 hover:bg-black/70 text-white p-2 rounded-lg backdrop-blur-md cursor-pointer transition-all opacity-0 group-hover:opacity-100 border border-white/10">
+            <label className="absolute top-6 right-6 bg-white/50 dark:bg-black/50 hover:bg-white/70 dark:hover:bg-black/70 text-slate-800 dark:text-white p-2 rounded-lg backdrop-blur-md cursor-pointer transition-all opacity-0 group-hover:opacity-100 border border-white/20">
             <Camera size={20} />
             <input type="file" hidden accept="image/*" onChange={(e) => handleImageUpload(e, 'coverURL')} />
             </label>
@@ -238,13 +260,13 @@ export default function Profile() {
           {/* Avatar & Rank */}
           <div className="relative group shrink-0">
             <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-1.5 bg-gradient-to-tr from-orange-500 to-purple-600 shadow-2xl relative z-10">
-              <img src={profileData.photoURL || `https://ui-avatars.com/api/?name=${profileData.name}`} alt="Profile" className="w-full h-full rounded-full object-cover bg-slate-800 border-4 border-[#0B0F19]" />
+              <img src={profileData.photoURL || `https://ui-avatars.com/api/?name=${profileData.name}`} alt="Profile" className="w-full h-full rounded-full object-cover bg-slate-100 dark:bg-slate-800 border-4 border-slate-50 dark:border-[#0B0F19]" />
             </div>
             <div className="absolute bottom-2 -right-2 z-20">
                 <LevelBadge rank={currentRank} size="lg" />
             </div>
             {isOwnProfile && (
-                <label className="absolute bottom-2 left-2 bg-orange-600 text-white p-2 rounded-full cursor-pointer shadow-lg hover:scale-110 transition-transform z-20 border border-black">
+                <label className="absolute bottom-2 left-2 bg-orange-600 text-white p-2 rounded-full cursor-pointer shadow-lg hover:scale-110 transition-transform z-20 border border-white dark:border-black">
                 <Camera size={16} />
                 <input type="file" hidden accept="image/*" onChange={(e) => handleImageUpload(e, 'photoURL')} />
                 </label>
@@ -259,29 +281,30 @@ export default function Profile() {
                   <input 
                     value={profileData.name}
                     onChange={(e) => setProfileData({...profileData, name: e.target.value})}
-                    className="bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-2xl font-bold text-white w-full focus:outline-none focus:border-orange-500"
+                    className="bg-slate-200 dark:bg-white/10 border border-slate-300 dark:border-white/20 rounded-lg px-4 py-2 text-2xl font-bold text-slate-900 dark:text-white w-full focus:outline-none focus:border-orange-500"
                     placeholder="Display Name"
                   />
                 ) : (
-                  <h1 className="text-4xl font-bold text-white tracking-tight">{profileData.name}</h1>
+                  <h1 className="text-4xl font-bold text-slate-900 dark:text-white tracking-tight drop-shadow-sm">{profileData.name}</h1>
                 )}
                 
-                <div className="flex flex-wrap items-center gap-4 text-slate-400 mt-3 text-sm">
+                <div className="flex flex-wrap items-center gap-4 text-slate-600 dark:text-slate-400 mt-3 text-sm">
                   <div className="flex items-center gap-1">
                     <MapPin size={14} /> 
                     {isEditing ? (
-                        <input value={profileData.location} onChange={(e) => setProfileData({...profileData, location: e.target.value})} className="bg-transparent border-b border-white/20 text-white w-32 focus:outline-none focus:border-orange-500" placeholder="Location" />
+                        <input value={profileData.location} onChange={(e) => setProfileData({...profileData, location: e.target.value})} className="bg-transparent border-b border-slate-400 dark:border-white/20 text-slate-800 dark:text-white w-32 focus:outline-none focus:border-orange-500" placeholder="Location" />
                     ) : (<span>{profileData.location || "World Citizen"}</span>)}
                   </div>
                   <div className="flex items-center gap-1">
                     <LinkIcon size={14} /> 
                     {isEditing ? (
-                        <input value={profileData.website} onChange={(e) => setProfileData({...profileData, website: e.target.value})} className="bg-transparent border-b border-white/20 text-white w-40 focus:outline-none focus:border-orange-500" placeholder="Website URL" />
-                    ) : (<a href={profileData.website} target="_blank" rel="noreferrer" className="hover:text-orange-400 truncate max-w-[150px]">{profileData.website || "No website"}</a>)}
+                        <input value={profileData.website} onChange={(e) => setProfileData({...profileData, website: e.target.value})} className="bg-transparent border-b border-slate-400 dark:border-white/20 text-slate-800 dark:text-white w-40 focus:outline-none focus:border-orange-500" placeholder="Website URL" />
+                    ) : (<a href={profileData.website} target="_blank" rel="noreferrer" className="hover:text-orange-500 truncate max-w-[150px]">{profileData.website || "No website"}</a>)}
                   </div>
                 </div>
 
-                <div className="max-w-md mt-2">
+                {/* Rank Text Wrapper to ensure visibility */}
+                <div className="max-w-md mt-2 text-slate-900 dark:text-white">
                     <LevelProgress currentXP={profileData.xp} rankData={currentRank} />
                 </div>
               </div>
@@ -291,22 +314,22 @@ export default function Profile() {
                     isEditing ? (
                         <button onClick={handleSave} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-emerald-900/20"><Save size={18}/> Save</button>
                     ) : (
-                        <button onClick={() => setIsEditing(true)} className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all backdrop-blur-md"><Edit2 size={18}/> Edit</button>
+                        <button onClick={() => setIsEditing(true)} className="bg-white dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-700 dark:text-white border border-slate-200 dark:border-white/10 px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-sm backdrop-blur-md"><Edit2 size={18}/> Edit</button>
                     )
                 ) : null}
-                <button onClick={handleShareProfile} className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-3 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all backdrop-blur-md" title="Share Profile"><Share2 size={18}/></button>
+                <button onClick={handleShareProfile} className="bg-white dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-700 dark:text-white border border-slate-200 dark:border-white/10 px-3 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-sm backdrop-blur-md" title="Share Profile"><Share2 size={18}/></button>
               </div>
             </div>
 
             {isEditing ? (
-              <textarea value={profileData.bio} onChange={(e) => setProfileData({...profileData, bio: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-slate-300 mt-2 focus:border-orange-500/50 outline-none resize-none" rows={3} placeholder="Tell the world about your travels..." />
+              <textarea value={profileData.bio} onChange={(e) => setProfileData({...profileData, bio: e.target.value})} className="w-full bg-slate-100 dark:bg-white/5 border border-slate-300 dark:border-white/10 rounded-xl p-3 text-slate-800 dark:text-slate-300 mt-2 focus:border-orange-500/50 outline-none resize-none" rows={3} placeholder="Tell the world about your travels..." />
             ) : (
-              <p className="text-lg text-slate-300 max-w-2xl leading-relaxed">{profileData.bio}</p>
+              <p className="text-lg text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed">{profileData.bio}</p>
             )}
 
             {isEditing ? (
-                <div className="bg-white/5 border border-white/5 rounded-xl p-4 mt-4 animate-in fade-in slide-in-from-top-2">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Social Links</h3>
+                <div className="bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-xl p-4 mt-4 animate-in fade-in slide-in-from-top-2">
+                    <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Social Links</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <SocialInput icon={<Facebook size={16}/>} value={profileData.facebook} onChange={e => setProfileData({...profileData, facebook: e.target.value})} placeholder="Facebook URL" />
                         <SocialInput icon={<Instagram size={16}/>} value={profileData.instagram} onChange={e => setProfileData({...profileData, instagram: e.target.value})} placeholder="Instagram URL" />
@@ -316,10 +339,10 @@ export default function Profile() {
                 </div>
             ) : (
                 <div className="flex gap-3 pt-2">
-                    {profileData.facebook && <SocialIcon icon={<Facebook size={20}/>} link={profileData.facebook} color="hover:text-blue-500" />}
-                    {profileData.instagram && <SocialIcon icon={<Instagram size={20}/>} link={profileData.instagram} color="hover:text-pink-500" />}
-                    {profileData.youtube && <SocialIcon icon={<Youtube size={20}/>} link={profileData.youtube} color="hover:text-red-500" />}
-                    {profileData.twitter && <SocialIcon icon={<Twitter size={20}/>} link={profileData.twitter} color="hover:text-sky-400" />}
+                    {profileData.facebook && <SocialIcon icon={<Facebook size={20}/>} link={profileData.facebook} color="hover:text-blue-600 dark:hover:text-blue-500" />}
+                    {profileData.instagram && <SocialIcon icon={<Instagram size={20}/>} link={profileData.instagram} color="hover:text-pink-600 dark:hover:text-pink-500" />}
+                    {profileData.youtube && <SocialIcon icon={<Youtube size={20}/>} link={profileData.youtube} color="hover:text-red-600 dark:hover:text-red-500" />}
+                    {profileData.twitter && <SocialIcon icon={<Twitter size={20}/>} link={profileData.twitter} color="hover:text-sky-500 dark:hover:text-sky-400" />}
                 </div>
             )}
           </div>
@@ -327,23 +350,23 @@ export default function Profile() {
 
         {/* ⚡ STATS GRID */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-12">
-          <StatBox label="Stories Written" value={stats.stories} icon={<BookOpen className="text-blue-400" />} />
-          <StatBox label="Places Visited" value={stats.countries} icon={<Globe className="text-emerald-400" />} />
-          <StatBox label="Total Likes" value={stats.likes} icon={<Heart className="text-red-400" />} />
-          <StatBox label="Total Views" value={stats.views} icon={<Eye className="text-purple-400" />} />
-          <StatBox label="Total Shares" value={stats.shares} icon={<Share2 className="text-orange-400" />} />
+          <StatBox label="Stories Written" value={stats.stories} icon={<BookOpen className="text-blue-500 dark:text-blue-400" />} />
+          <StatBox label="Places Visited" value={stats.countries} icon={<Globe className="text-emerald-500 dark:text-emerald-400" />} />
+          <StatBox label="Total Likes" value={stats.likes} icon={<Heart className="text-red-500 dark:text-red-400" />} />
+          <StatBox label="Total Views" value={stats.views} icon={<Eye className="text-purple-500 dark:text-purple-400" />} />
+          <StatBox label="Total Shares" value={stats.shares} icon={<Share2 className="text-orange-500 dark:text-orange-400" />} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* ⚡ ACHIEVEMENTS (LEFT COL) */}
             <div className="lg:col-span-2 space-y-6">
-                <h2 className="text-xl font-bold flex items-center gap-2 text-white"><Award className="text-yellow-500" /> Achievements</h2>
+                <h2 className="text-xl font-bold flex items-center gap-2 text-slate-900 dark:text-white"><Award className="text-yellow-500" /> Achievements</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {badges.map(badge => (
-                        <div key={badge.id} className={`p-4 rounded-xl border flex flex-col items-center text-center transition-all hover:scale-105 select-none ${badge.isUnlocked ? 'bg-gradient-to-br from-orange-500/10 to-purple-500/10 border-orange-500/30 shadow-lg shadow-orange-500/5' : 'bg-white/5 border-white/5 opacity-40 grayscale'}`}>
-                            <div className="text-orange-400 mb-2 p-2 bg-white/5 rounded-lg"><RenderIcon iconName={badge.icon} size={24}/></div>
-                            <div className="font-bold text-sm text-white mb-1">{badge.name}</div>
-                            <div className="text-[10px] text-slate-400">{badge.description}</div>
+                        <div key={badge.id} className={`p-4 rounded-xl border flex flex-col items-center text-center transition-all hover:scale-105 select-none ${badge.isUnlocked ? 'bg-gradient-to-br from-orange-50 to-purple-50 dark:from-orange-500/10 dark:to-purple-500/10 border-orange-200 dark:border-orange-500/30 shadow-md dark:shadow-lg dark:shadow-orange-500/5' : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/5 opacity-50 grayscale'}`}>
+                            <div className="text-orange-500 dark:text-orange-400 mb-2 p-2 bg-white dark:bg-white/5 rounded-lg shadow-sm"><RenderIcon iconName={badge.icon} size={24}/></div>
+                            <div className="font-bold text-sm text-slate-800 dark:text-white mb-1">{badge.name}</div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400">{badge.description}</div>
                         </div>
                     ))}
                     {badges.length === 0 && <p className="text-slate-500 text-sm italic">No badges configured.</p>}
@@ -353,22 +376,22 @@ export default function Profile() {
             {/* ⚡ DYNAMIC WALLET & SHOWCASE (RIGHT COL) */}
             <div className="space-y-6">
                 {/* TABS */}
-                <div className="flex bg-[#111625] p-1 rounded-xl border border-white/10">
+                <div className="flex bg-slate-200 dark:bg-[#111625] p-1 rounded-xl border border-slate-300 dark:border-white/10">
                     <button 
                         onClick={() => setActiveTab("wallet")} 
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'wallet' ? 'bg-white/10 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'wallet' ? 'bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
                     >
                         <Briefcase size={14}/> {isOwnProfile ? "My Wallet" : "Wallet"}
                     </button>
                     <button 
                         onClick={() => setActiveTab("showcase")} 
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'showcase' ? 'bg-yellow-500/10 text-yellow-500 shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'showcase' ? 'bg-yellow-100 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-500 shadow' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
                     >
                         <Gem size={14}/> Showcase
                     </button>
                 </div>
 
-                <div className="bg-[#111625]/60 border border-white/5 rounded-2xl p-6 relative overflow-hidden min-h-[300px]">
+                <div className="bg-white dark:bg-[#111625]/60 border border-slate-200 dark:border-white/5 rounded-2xl p-6 relative overflow-hidden min-h-[300px] shadow-lg dark:shadow-none">
                     <AnimatePresence mode="wait">
                         {activeTab === 'wallet' ? (
                             <motion.div 
@@ -379,8 +402,8 @@ export default function Profile() {
                                 className="space-y-4"
                             >
                                 <div className="flex items-center justify-between">
-                                    <h3 className="text-sm font-bold text-white flex items-center gap-2"><Briefcase size={16} className="text-blue-400"/> Active Items</h3>
-                                    <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-1 rounded-full">{profileData.inventory.length} items</span>
+                                    <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2"><Briefcase size={16} className="text-blue-500 dark:text-blue-400"/> Active Items</h3>
+                                    <span className="text-[10px] text-slate-500 bg-slate-100 dark:bg-white/5 px-2 py-1 rounded-full">{profileData.inventory.length} items</span>
                                 </div>
                                 
                                 <div className="grid grid-cols-2 gap-3">
@@ -407,24 +430,24 @@ export default function Profile() {
                                         }
 
                                         return (
-                                            <div key={idx} className={`p-3 rounded-xl border flex flex-col items-center text-center relative group overflow-hidden
-                                                ${rarity === 'LEGENDARY' ? 'bg-yellow-500/10 border-yellow-500/30' : 
-                                                  rarity === 'Uncommon' ? 'bg-emerald-500/10 border-emerald-500/30' : 
-                                                  'bg-white/5 border-white/5'}`
+                                            <div key={idx} className={`p-3 rounded-xl border flex flex-col items-center text-center relative group overflow-hidden shadow-sm
+                                                ${rarity === 'LEGENDARY' ? 'bg-yellow-50 dark:bg-yellow-500/10 border-yellow-200 dark:border-yellow-500/30' : 
+                                                  rarity === 'Uncommon' ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30' : 
+                                                  'bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/5'}`
                                             }>
-                                                <div className={`p-2 rounded-full mb-2 ${rarity === 'LEGENDARY' ? 'bg-yellow-500 text-black' : 'bg-white/10 text-white'}`}>
+                                                <div className={`p-2 rounded-full mb-2 ${rarity === 'LEGENDARY' ? 'bg-yellow-500 text-black' : 'bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-white'}`}>
                                                     <RenderIcon iconName={icon} size={20} />
                                                 </div>
-                                                <div className="font-bold text-xs text-white truncate w-full">{name}</div>
-                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">{rarity}</div>
+                                                <div className="font-bold text-xs text-slate-900 dark:text-white truncate w-full">{name}</div>
+                                                <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{rarity}</div>
                                                 
                                                 {/* COUNTDOWN TIMER */}
                                                 {!isLegacy && timeLeft && timeLeft !== "Expired" && (
-                                                    <div className={`text-[9px] font-mono flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full ${isExpiringSoon ? 'bg-red-500/20 text-red-400 animate-pulse' : 'bg-blue-500/10 text-blue-400'}`}>
+                                                    <div className={`text-[9px] font-mono flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full ${isExpiringSoon ? 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400 animate-pulse' : 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400'}`}>
                                                         <Clock size={8} /> {timeLeft} left
                                                     </div>
                                                 )}
-                                                {isLegacy && <div className="text-[9px] text-slate-600 mt-1">Permanent</div>}
+                                                {isLegacy && <div className="text-[9px] text-slate-400 mt-1">Permanent</div>}
                                             </div>
                                         );
                                     })}
@@ -445,15 +468,15 @@ export default function Profile() {
                                 className="space-y-4"
                             >
                                 <div className="flex items-center justify-between">
-                                    <h3 className="text-sm font-bold text-white flex items-center gap-2"><Gem size={16} className="text-yellow-400"/> Received Tributes</h3>
-                                    <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-1 rounded-full">{profileData.trophies.length} gifts</span>
+                                    <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2"><Gem size={16} className="text-yellow-500 dark:text-yellow-400"/> Received Tributes</h3>
+                                    <span className="text-[10px] text-slate-500 bg-slate-100 dark:bg-white/5 px-2 py-1 rounded-full">{profileData.trophies.length} gifts</span>
                                 </div>
 
                                 <div className="grid grid-cols-3 gap-3">
                                     {profileData.trophies.map((trophy, idx) => (
-                                        <div key={idx} className="aspect-square rounded-xl bg-gradient-to-br from-yellow-500/10 to-transparent border border-yellow-500/20 flex flex-col items-center justify-center p-2 relative group">
-                                            <RenderIcon iconName={trophy.icon} size={24} className="text-yellow-400 mb-1 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]"/>
-                                            <span className="text-[10px] font-bold text-yellow-100">{trophy.count > 1 ? `x${trophy.count}` : trophy.name}</span>
+                                        <div key={idx} className="aspect-square rounded-xl bg-gradient-to-br from-yellow-50 to-transparent dark:from-yellow-500/10 dark:to-transparent border border-yellow-200 dark:border-yellow-500/20 flex flex-col items-center justify-center p-2 relative group shadow-sm">
+                                            <RenderIcon iconName={trophy.icon} size={24} className="text-yellow-500 dark:text-yellow-400 mb-1 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]"/>
+                                            <span className="text-[10px] font-bold text-yellow-700 dark:text-yellow-100">{trophy.count > 1 ? `x${trophy.count}` : trophy.name}</span>
                                             {/* Tooltip */}
                                             <div className="absolute inset-0 bg-black/80 flex items-center justify-center text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity rounded-xl">
                                                 {trophy.count} received
@@ -462,7 +485,7 @@ export default function Profile() {
                                     ))}
                                     {profileData.trophies.length === 0 && (
                                         <div className="col-span-3 text-center py-8 text-slate-500 text-xs">
-                                            <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-3"><Lock size={16}/></div>
+                                            <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center mx-auto mb-3"><Lock size={16}/></div>
                                             No tributes received yet.<br/>Write amazing stories to earn them!
                                         </div>
                                     )}
@@ -482,9 +505,9 @@ export default function Profile() {
 /* SUB COMPONENTS */
 function StatBox({ label, value, icon }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-[#111625]/60 border border-white/5 p-6 rounded-2xl flex flex-col items-center justify-center text-center hover:bg-white/5 transition-colors group backdrop-blur-sm">
-      <div className="p-3 bg-white/5 rounded-full mb-3 group-hover:scale-110 transition-transform shadow-lg">{icon}</div>
-      <div className="text-3xl font-bold text-white mb-1">{value}</div>
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-[#111625]/60 border border-slate-200 dark:border-white/5 p-6 rounded-2xl flex flex-col items-center justify-center text-center hover:bg-slate-50 dark:hover:bg-white/5 transition-colors group backdrop-blur-sm shadow-xl dark:shadow-none">
+      <div className="p-3 bg-slate-100 dark:bg-white/5 rounded-full mb-3 group-hover:scale-110 transition-transform shadow-md">{icon}</div>
+      <div className="text-3xl font-bold text-slate-900 dark:text-white mb-1">{value}</div>
       <div className="text-xs text-slate-500 uppercase tracking-wider font-bold">{label}</div>
     </motion.div>
   );
@@ -492,15 +515,15 @@ function StatBox({ label, value, icon }) {
 
 function SocialInput({ icon, value, onChange, placeholder }) {
     return (
-        <div className="flex items-center gap-3 bg-black/20 border border-white/10 rounded-lg px-3 py-2 focus-within:border-orange-500/50 transition-colors">
-            <div className="text-slate-400">{icon}</div>
-            <input className="bg-transparent border-none text-sm text-white focus:outline-none w-full placeholder:text-slate-600" placeholder={placeholder} value={value} onChange={onChange} />
+        <div className="flex items-center gap-3 bg-slate-200 dark:bg-black/20 border border-slate-300 dark:border-white/10 rounded-lg px-3 py-2 focus-within:border-orange-500/50 transition-colors">
+            <div className="text-slate-500 dark:text-slate-400">{icon}</div>
+            <input className="bg-transparent border-none text-sm text-slate-900 dark:text-white focus:outline-none w-full placeholder:text-slate-500 dark:placeholder:text-slate-600" placeholder={placeholder} value={value} onChange={onChange} />
         </div>
     )
 }
 
 function SocialIcon({ icon, link, color }) {
     return (
-        <a href={link} target="_blank" rel="noreferrer" className={`p-3 bg-white/5 rounded-full text-slate-400 transition-colors ${color}`}>{icon}</a>
+        <a href={link} target="_blank" rel="noreferrer" className={`p-3 bg-white dark:bg-white/5 rounded-full text-slate-500 dark:text-slate-400 transition-colors shadow-sm ${color}`}>{icon}</a>
     )
 }

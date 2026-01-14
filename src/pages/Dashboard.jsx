@@ -4,11 +4,11 @@ import {
   Search, Settings, LogOut, Compass, Eye, Pencil, Trash2,
   Menu, X, Globe, Sun, Moon, MapPin, 
   AlertCircle, Clock, RotateCcw, CheckCircle,
-  Users, Zap, Share2, MoreVertical, Heart, Calendar
+  Users, Zap, Share2, MoreVertical, Heart, Calendar, Gift 
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import toast, { Toaster } from "react-hot-toast";
-import { motion, useMotionTemplate, useMotionValue } from "framer-motion"; // ⚡ ADDED FRAMER MOTION
+import { motion, useMotionTemplate, useMotionValue } from "framer-motion"; 
 
 import { useAuth } from "../contexts/AuthContext";
 import { db, storage } from "../services/firebase";
@@ -34,7 +34,10 @@ export default function Dashboard() {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [dashboardStats, setDashboardStats] = useState({ totalStories: 0, totalLikes: 0, totalViews: 0, totalShares: 0, placesVisited: 0 });
   const [userData, setUserData] = useState({ xp: 0, badges: [], inventory: [], name: "" });
-  const [hubTab, setHubTab] = useState("tracking");
+  
+  // ⚡ CHANGE: Default tab set to "explore"
+  const [hubTab, setHubTab] = useState("explore");
+  
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
@@ -351,6 +354,9 @@ function StoryCard({ story, navigate, onDelete }) {
     const status = getStatusConfig(story);
     const displayDate = formatStoryDate(story);
     
+    // ⚡ GIFT COUNT LOGIC
+    const giftCount = story.giftCount || story.tributeCount || 0;
+    
     // Mouse Position Logic for Neon Effect
     let mouseX = useMotionValue(0);
     let mouseY = useMotionValue(0);
@@ -395,6 +401,13 @@ function StoryCard({ story, navigate, onDelete }) {
                     <div className={`absolute top-3 right-3 px-2.5 py-1 rounded-full backdrop-blur-md border text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-lg ${status.color}`}>
                         {status.icon} {status.label}
                     </div>
+
+                    {/* 🎁 GIFT BADGE (Only for Approved Stories) */}
+                    {story.status === 'approved' && giftCount > 0 && (
+                        <div className="absolute bottom-3 right-3 px-2 py-1 rounded-full bg-yellow-500/20 backdrop-blur-md border border-yellow-500/50 text-yellow-400 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-lg">
+                            <Gift size={10} className="fill-current"/> {giftCount}
+                        </div>
+                    )}
                 </div>
 
                 {/* 📝 CONTENT BODY */}

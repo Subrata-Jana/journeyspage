@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useContext, createContext, useRef } from "react";
+import React, { useEffect, useState, useContext, createContext, useCallback, useRef } from "react";
 import { createPortal } from "react-dom"; 
 import { useParams, useNavigate, useLocation } from "react-router-dom"; 
 import { 
   collection, doc, getDoc, getDocs, orderBy, query, updateDoc, onSnapshot, increment, addDoc, serverTimestamp 
 } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { motion, useScroll, useSpring, AnimatePresence } from "framer-motion"; 
 import { 
   MapPin, Calendar, Flag, Mountain, Info, Lightbulb, User, 
@@ -17,7 +17,7 @@ import toast, { Toaster } from "react-hot-toast";
 import { db } from "../services/firebase";
 import { useMetaOptions } from "../hooks/useMetaOptions"; 
 import GallerySlider from "../components/GallerySlider"; 
-import ThreeSixtyViewer from "../components/ThreeSixtyViewer"; // ⚡ IMPORTED 360 VIEWER
+import ThreeSixtyViewer from "../components/ThreeSixtyViewer"; 
 import { toggleStoryLike, toggleUserTrack, trackShare } from "../services/gamificationService";
 import { sendNotification } from "../services/notificationService"; 
 import TreasureSpawner from "../components/premium/TreasureSpawner"; 
@@ -26,7 +26,6 @@ import GiftModal from "../components/gamification/GiftModal";
 // --- CONTEXT FOR SMART REVIEW ---
 const ReviewContext = createContext();
 
-// --- HELPER: Get Color Hex ---
 const getColorHex = (name) => {
   const colors = {
     slate: '#64748b', red: '#ef4444', orange: '#f97316', amber: '#f59e0b',
@@ -43,9 +42,16 @@ export default function StoryDetail() {
   const navigate = useNavigate();
   const location = useLocation(); 
   const auth = getAuth();
-  const currentUser = auth.currentUser;
   
-  // ⚡ META DATA LISTS
+  // ⚡ REACTIVE USER STATE
+  const [currentUser, setCurrentUser] = useState(auth.currentUser);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+        setCurrentUser(user);
+    });
+    return () => unsub();
+  }, []);
+
   const { options: categories } = useMetaOptions("categories");
   const { options: tripTypes } = useMetaOptions("tripTypes");       
   const { options: difficulties } = useMetaOptions("difficultyLevels");
@@ -55,7 +61,6 @@ export default function StoryDetail() {
   const [days, setDays] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // 💬 COMMENTS & SOCIAL STATE
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);
@@ -66,23 +71,21 @@ export default function StoryDetail() {
   const [likeCount, setLikeCount] = useState(0);
   const [shareCount, setShareCount] = useState(0);
   
-  // 🎁 GIFTING STATE
   const [showGiftModal, setShowGiftModal] = useState(false);
-
-  // 🖼️ GALLERY & LIGHTBOX STATE
   const [fullGallery, setFullGallery] = useState([]);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
 
-  // 🛡️ ADMIN / AUTHOR REVIEW STATE
-  const isAdminView = location.state?.adminView === true;
+  // ⚡ ADMIN LOGIC CHECK
+  const isAdminView = 
+      (location.state?.adminView === true) || 
+      (currentUser?.email?.toLowerCase() === "sjsubratajana@gmail.com");
+      
   const [feedback, setFeedback] = useState({}); 
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
-
-  // ✍️ AUTHOR EDIT MODE CHECK
   const [isAuthorView, setIsAuthorView] = useState(false);
 
-  // --- 👁️ ADVANCED VIEW COUNTER ---
+  // --- ANALYTICS ---
   const [minTimePassed, setMinTimePassed] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
   const viewTriggered = useRef(false);
@@ -99,8 +102,8 @@ export default function StoryDetail() {
   }, [hasScrolled]);
 
   useEffect(() => {
-    if (!storyId || viewTriggered.current) return;
-    if (minTimePassed && hasScrolled) {
+    if (!storyId || viewTriggered.current || !story) return;
+    if (minTimePassed && hasScrolled && story.status === 'approved') {
         const sessionKey = `viewed_${storyId}`;
         if (sessionStorage.getItem(sessionKey)) return;
         viewTriggered.current = true; 
@@ -108,9 +111,9 @@ export default function StoryDetail() {
         const storyRef = doc(db, "stories", storyId);
         updateDoc(storyRef, { views: increment(1) }).catch(e => console.error(e));
     }
-  }, [minTimePassed, hasScrolled, storyId]);
+  }, [minTimePassed, hasScrolled, storyId, story]); 
 
-  // 🌓 THEME STATE
+  // --- THEME ---
   const [isDark, setIsDark] = useState(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("theme") === "dark" || 
@@ -130,7 +133,6 @@ export default function StoryDetail() {
 
   const isResubmission = story?.status === 'pending' && story?.feedback && Object.keys(story.feedback).length > 0;
 
-  // --- FETCH STORY ---
   useEffect(() => {
     if (!storyId) return;
     async function fetchStoryAndAuthor() {
@@ -150,7 +152,14 @@ export default function StoryDetail() {
             setFeedback(cleanFeedback);
         }
 
-        if (!storyData.published && !isAuthor && !isAdminView) { navigate("/dashboard"); return; }
+        if (
+            !storyData.published &&
+            !isAdminView &&
+            !(isAuthor && storyData.status === "returned")
+            ) {
+            navigate("/dashboard");
+            return;
+            }
 
         setLikeCount(storyData.likeCount || (storyData.likes ? storyData.likes.length : 0));
         setShareCount(storyData.shareCount || 0);
@@ -180,7 +189,6 @@ export default function StoryDetail() {
         const allImages = [];
         if (storyData.coverImage) allImages.push({ url: storyData.coverImage, caption: storyData.coverImageCaption || "Cover Photo", is360: false });
         daysData.forEach(d => { if (d.imageUrl) allImages.push({ url: d.imageUrl, caption: d.imageCaption || `Day ${d.dayNumber}: ${d.title}`, is360: false }); });
-        
         if (storyData.gallery && Array.isArray(storyData.gallery)) {
             storyData.gallery.forEach(item => {
                 if (typeof item === 'string') allImages.push({ url: item, caption: "", is360: false });
@@ -194,7 +202,6 @@ export default function StoryDetail() {
     fetchStoryAndAuthor();
   }, [storyId, navigate, currentUser, isAdminView]);
 
-  // --- COMMENTS LISTENER ---
   useEffect(() => {
     if (!storyId) return;
     const commentsRef = collection(db, "stories", storyId, "comments");
@@ -203,7 +210,8 @@ export default function StoryDetail() {
     return () => unsubscribe();
   }, [storyId]);
 
-  // --- SOCIAL ACTIONS ---
+  // --- ACTIONS ---
+
   const handleTrack = async () => {
         if (!currentUser) return toast.error("Please login to track scouts");
         if (currentUser.uid === story.authorId) return toast.error("You cannot track yourself!");
@@ -319,15 +327,19 @@ export default function StoryDetail() {
     } catch (e) { toast.error("Failed to post comment"); } finally { setSubmittingComment(false); }
   };
 
-  const toggleFeedback = (fieldId, comment) => {
+  // --- REVIEW SYSTEM ---
+  const toggleFeedback = useCallback((fieldId, comment) => {
     if (!isAdminView) return; 
     setFeedback(prev => {
         const next = { ...prev };
-        if (!comment || comment.trim() === "") delete next[fieldId];
-        else next[fieldId] = comment;
+        if (!comment || comment.trim() === "") {
+            delete next[fieldId];
+        } else {
+            next[fieldId] = comment;
+        }
         return next;
     });
-  };
+  }, [isAdminView]);
 
   const processApprove = async () => {
     setIsSubmittingReview(true);
@@ -359,7 +371,15 @@ export default function StoryDetail() {
     <ReviewContext.Provider value={{ isAdminView, isAuthorView, feedback, toggleFeedback, isResubmission }}>
     <div className="bg-slate-50 dark:bg-[#0B0F19] min-h-screen pb-32 font-sans transition-colors duration-300 relative overflow-x-hidden">
       <Toaster position="bottom-center" />
-      <TreasureSpawner /> 
+      
+      {currentUser && currentUser.uid !== story.authorId && !isAdminView && <TreasureSpawner />} 
+
+      {/* ⚡ DEBUG: ADMIN BADGE */}
+      {isAdminView && (
+        <div className="fixed top-20 left-4 z-[9999] bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg pointer-events-none opacity-50">
+            ADMIN MODE ACTIVE
+        </div>
+      )}
 
       <motion.div className="fixed top-0 left-0 right-0 h-1.5 z-[100] bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 origin-left" style={{ scaleX }} />
 
@@ -377,7 +397,7 @@ export default function StoryDetail() {
           </div>
       </div>
 
-      {/* AUTHOR/ADMIN ALERTS */}
+      {/* ALERTS */}
       {isAuthorView && (
           <div className="max-w-7xl mx-auto px-4 mt-24 mb-4">
               <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-4 text-center md:text-left">
@@ -404,17 +424,35 @@ export default function StoryDetail() {
 
       {/* HERO SECTION */}
       <div className="relative h-[85vh] md:h-[95vh] w-full bg-slate-900 overflow-hidden group">
-        <ReviewSection id="coverImage" label="Cover Image" className="w-full h-full absolute inset-0" flagPosition="top-24 right-4">
+        
+        {/* 1. VISUAL LAYER (Image) */}
+        <div className="absolute inset-0 z-0">
             {story.coverImage ? (
             <motion.img initial={{ scale: 1.15 }} animate={{ scale: 1 }} transition={{ duration: 2, ease: "easeOut" }} src={story.coverImage} alt={story.title} className="w-full h-full object-cover" />
             ) : <div className="w-full h-full flex items-center justify-center text-white/20">No Cover</div>}
-        </ReviewSection>
+        </div>
+
+        {/* 2. ADMIN INTERACTION LAYER (Flag) */}
+        <div className="absolute top-0 left-0 right-0 h-1/2 z-[60] pointer-events-none">
+             <ReviewSection 
+                id="coverImage" 
+                label="Cover Image" 
+                className="w-full h-full" 
+                flagPosition="top-24 right-4" 
+             >
+                <div className="w-full h-full" />
+             </ReviewSection>
+        </div>
         
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-[#0B0F19]/20 to-transparent pointer-events-none" />
+        {/* 3. GRADIENT OVERLAY (Z-10) */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-[#0B0F19]/20 to-transparent pointer-events-none z-10" />
         
-        <div className="absolute bottom-0 inset-0 z-20 left-0 w-full p-4 md:p-12 lg:p-20 pb-16 lg:pb-40 max-w-7xl mx-auto flex flex-col items-center justify-end h-full text-center pointer-events-none">
-            <ReviewSection id="title" label="Title & Meta" className="pointer-events-auto space-y-4 md:space-y-6 w-full animate-in fade-in slide-in-from-bottom-12 duration-1000">
-                <ReviewSection id="location" label="Location" className="inline-block relative" flagPosition="-right-3 -top-3">
+        {/* 4. CONTENT (Z-50) */}
+        <div className="absolute bottom-0 inset-0 z-50 left-0 w-full p-4 md:p-12 lg:p-20 pb-16 lg:pb-40 max-w-7xl mx-auto flex flex-col items-center justify-end h-full text-center pointer-events-none">
+            <ReviewSection id="title" label="Title & Meta" className="pointer-events-auto relative space-y-4 md:space-y-6 w-full animate-in fade-in slide-in-from-bottom-12 duration-1000">
+                
+                {/* ⚡ UPDATED: Responsive flagPosition for Location */}
+                <ReviewSection id="location" label="Location" className="inline-block relative" flagPosition="right-0 -top-2 md:-right-3 md:-top-3">
                     <div className="inline-flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white text-xs md:text-sm font-bold uppercase tracking-wider">
                         <MapPin size={12} md:size={14} className="text-orange-400"/> {story.location}
                     </div>
@@ -461,8 +499,10 @@ export default function StoryDetail() {
                         <div className="relative shrink-0"><div className="w-14 h-14 md:w-20 md:h-20 rounded-full p-1 bg-white dark:bg-[#151b2b] shadow-lg"><img src={authorProfile?.photoURL || `https://ui-avatars.com/api/?name=${story.authorName}`} className="w-full h-full rounded-full object-cover" alt="Author"/></div></div>
                         <div className="flex-1 min-w-0">
                             <div className="flex justify-between items-start flex-wrap gap-2">
-                                <div><div className="text-[10px] md:text-xs font-bold text-orange-500 tracking-widest uppercase mb-1">{authorProfile?.badge || "SCOUT"}</div><h3 className="text-lg md:text-2xl font-black text-slate-900 dark:text-white leading-none truncate pr-2 max-w-[150px] md:max-w-none">{story.authorName}</h3></div>
-                                <button onClick={handleTrack} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all border shrink-0 ${isTracking ? "bg-transparent border-slate-300 dark:border-white/20 text-slate-500 dark:text-slate-400" : "bg-orange-500 border-orange-500 text-white hover:bg-orange-600 shadow-md hover:shadow-lg"}`}>{isTracking ? <>Tracking <Check size={12}/></> : <><Footprints size={12}/> Track +</>}</button>
+                                <div><div className="text-[10px] md:text-xs font-bold text-orange-500 tracking-widest uppercase mb-1">{authorProfile?.currentRank?.name || authorProfile?.badge || "SCOUT"}</div><h3 className="text-lg md:text-2xl font-black text-slate-900 dark:text-white leading-none truncate pr-2 max-w-[150px] md:max-w-none">{story.authorName}</h3></div>
+                                {currentUser && currentUser.uid !== story.authorId && (
+                                    <button onClick={handleTrack} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all border shrink-0 ${isTracking ? "bg-transparent border-slate-300 dark:border-white/20 text-slate-500 dark:text-slate-400" : "bg-orange-500 border-orange-500 text-white hover:bg-orange-600 shadow-md hover:shadow-lg"}`}>{isTracking ? <>Tracking <Check size={12}/></> : <><Footprints size={12}/> Track +</>}</button>
+                                )}
                             </div>
                             <div className="text-[10px] text-slate-400 mt-1.5 font-medium flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${trackersCount > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}/>{trackersCount} Trackers</div>
                         </div>
@@ -471,7 +511,8 @@ export default function StoryDetail() {
                     <div className="grid grid-cols-2 gap-4 md:gap-8 mb-6 md:mb-8">
                         <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Duration</div><div className="flex items-baseline gap-1"><span className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white">{days.length}</span><span className="text-xs md:text-sm font-bold text-slate-400">Days</span></div></div>
                         
-                        <ReviewSection id="cost" label="Cost" className="block relative" flagPosition="right-0 -top-2">
+                        {/* ⚡ UPDATED: Responsive flagPosition for Cost */}
+                        <ReviewSection id="cost" label="Cost" className="block relative" flagPosition="right-0 -top-2 md:-right-3 md:-top-2">
                             <div><div className="text-[10px] font-bold text-slate-400 uppercase">Cost</div><div className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight">₹{story.totalCost || "0"}</div></div>
                         </ReviewSection>
                     </div>
@@ -481,7 +522,9 @@ export default function StoryDetail() {
                         <button onClick={handleLike} disabled={hasLiked || isLiking} className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs md:text-sm shadow-sm border ${hasLiked ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-500 border-red-200 dark:border-red-500/20 cursor-default" : "bg-white dark:bg-white/5 text-slate-600 dark:text-white border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/10 hover:scale-[1.02]"}`}>
                             <Heart size={16} className={`transition-all duration-300 ${hasLiked ? "fill-current scale-110" : ""}`} /> <span>{hasLiked ? "Liked" : "Like"}</span>
                         </button>
-                        <button onClick={handleGift} className="flex-1 py-3 rounded-xl bg-gradient-to-tr from-yellow-500 to-orange-500 text-white font-bold flex items-center justify-center gap-2 text-xs md:text-sm shadow-lg shadow-orange-500/20 hover:scale-[1.02] transition-transform"><Gift size={16}/> Gift</button>
+                        {currentUser && currentUser.uid !== story.authorId && (
+                            <button onClick={handleGift} className="flex-1 py-3 rounded-xl bg-gradient-to-tr from-yellow-500 to-orange-500 text-white font-bold flex items-center justify-center gap-2 text-xs md:text-sm shadow-lg shadow-orange-500/20 hover:scale-[1.02] transition-transform"><Gift size={16}/> Gift</button>
+                        )}
                         <button onClick={handleShare} className="flex-1 py-3 rounded-xl bg-[#0B0F19] dark:bg-white text-white dark:text-[#0B0F19] font-bold flex items-center justify-center gap-2 text-xs md:text-sm"><Share2 size={16}/> Share</button>
                     </div>
                 </div>
@@ -529,12 +572,11 @@ export default function StoryDetail() {
             </ReviewSection>
         )}
 
-        {/* ⚡ FIXED: GALLERY GRID (No more haphazard columns) */}
+        {/* GALLERY */}
         {fullGallery.length > 0 && (
             <ReviewSection id="gallery" label="Photo Gallery" className="mt-24 md:mt-32 max-w-[1400px] mx-auto px-4 md:px-6">
                 <div className="flex items-center justify-between mb-6"><h3 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">Visual Diary</h3><span className="text-slate-500 font-medium text-xs md:text-base">{fullGallery.length} Photos</span></div>
                 
-                {/* ⚡ THE FIX: GRID LAYOUT */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {fullGallery.map((img, idx) => (
                         <motion.div 
@@ -552,7 +594,6 @@ export default function StoryDetail() {
                                 </div>
                             )}
                             
-                            {/* Hover Overlay */}
                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </motion.div>
                     ))}
@@ -582,7 +623,7 @@ export default function StoryDetail() {
 
       </div>
 
-      {/* ⚡ LIGHTBOX LOGIC: Detects 360 vs Regular Images */}
+      {/* LIGHTBOX */}
       {lightboxIndex !== -1 && (
         fullGallery[lightboxIndex]?.is360 ? (
             <div className="fixed inset-0 z-[10000] bg-black w-full h-full">
@@ -600,7 +641,7 @@ export default function StoryDetail() {
         )
       )}
       
-      {/* 🎁 GIFT MODAL */}
+      {/* GIFT MODAL */}
       <AnimatePresence>
         {showGiftModal && (
             <GiftModal 
@@ -614,7 +655,7 @@ export default function StoryDetail() {
         )}
       </AnimatePresence>
 
-      {/* 🛡️ ADMIN FOOTER */}
+      {/* ADMIN FOOTER */}
       {isAdminView && (
         <motion.div initial={{ y: 100 }} animate={{ y: 0 }} className="fixed bottom-0 left-0 w-full p-3 md:p-4 z-[80] bg-[#111625]/95 backdrop-blur-xl border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-3">
             <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
@@ -654,69 +695,153 @@ export default function StoryDetail() {
   );
 }
 
-// 🛡️ SUB-COMPONENTS
-const ReviewSection = ({ id, label, children, className, flagPosition = "-right-3 -top-3" }) => {
-    const { isAdminView, isAuthorView, feedback, toggleFeedback, isResubmission } = useContext(ReviewContext);
-    const [isOpen, setIsOpen] = useState(false);
-    const [comment, setComment] = useState("");
-    
-    useEffect(() => { if(feedback[id]) setComment(feedback[id]); }, [feedback, id]);
-  
-    const hasIssue = !!feedback[id];
-    const shouldShowFlag = isAdminView || (isAuthorView && hasIssue);
-  
-    if (!shouldShowFlag) return <div className={className}>{children}</div>;
-  
-    const flagColor = isResubmission && hasIssue ? "bg-blue-600 hover:bg-blue-500" : "bg-red-600 hover:bg-red-500";
-    const flagIcon = isResubmission && hasIssue ? <SearchCheck size={16} className="text-white"/> : <Flag size={16} className="text-white" fill="currentColor"/>;
-  
-    return (
-        <div className={`group/admin relative ${className} ${hasIssue ? (isResubmission ? 'ring-2 ring-blue-500/50 rounded-xl bg-blue-500/5' : 'ring-2 ring-red-500/5') : ''}`}>
-            {children}
-            
-            {isAdminView ? (
-                <button 
-                    onClick={() => setIsOpen(!isOpen)} 
-                    className={`absolute ${flagPosition} z-[50] p-2 rounded-full shadow-xl transition-all transform hover:scale-110 
-                    ${hasIssue ? flagColor : 'bg-white text-slate-400 border border-slate-200'} cursor-pointer`} 
-                >
-                    {hasIssue ? flagIcon : <Flag size={16}/>}
-                </button>
-            ) : (
-                <button 
-                    onClick={() => setIsOpen(!isOpen)} 
-                    className={`absolute ${flagPosition} z-[50] px-4 py-2 rounded-full shadow-xl bg-red-600 text-white text-xs font-bold flex items-center gap-2 animate-bounce cursor-pointer hover:bg-red-700 transition-colors`} 
-                >
-                    <AlertTriangle size={14} fill="currentColor"/>
-                    <span>Action Required</span>
-                </button>
-            )}
-  
-            <AnimatePresence>
-                {isOpen && createPortal(
-                    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm"/>
-                        <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="relative w-full max-w-md bg-[#1A1F2E] border border-white/10 rounded-2xl shadow-2xl p-6">
-                            <div className="flex justify-between items-center mb-4">
-                                <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">{isResubmission ? "Verify Modification" : `Issue: ${label}`}</span>
-                                <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-white/10 rounded-full"><X size={20} className="text-slate-500 hover:text-white"/></button>
-                            </div>
-                            <textarea className={`w-full h-32 bg-black/20 border border-white/10 rounded-xl p-4 text-base text-white focus:outline-none focus:border-red-500 resize-none mb-6 ${!isAdminView ? 'cursor-not-allowed opacity-80' : ''}`} placeholder="Describe the issue explicitly..." value={comment} onChange={(e) => setComment(e.target.value)} autoFocus={isAdminView} readOnly={!isAdminView} />
-                            <div className="flex gap-3">
-                                {isAdminView ? (
-                                    <>
-                                        <button onClick={() => { if(!comment.trim()) return toast.error("Write comment"); toggleFeedback(id, comment); setIsOpen(false); toast.success("Flagged!"); }} className={`flex-1 py-3 rounded-xl text-white font-bold transition-all hover:scale-[1.02] active:scale-95 ${isResubmission ? 'bg-blue-600 hover:bg-blue-500' : 'bg-red-600 hover:bg-red-500'}`}>Flag Issue</button>
-                                        {hasIssue && (<button onClick={() => { toggleFeedback(id, null); setComment(""); setIsOpen(false); }} className="px-4 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-500 transition-all"><Check size={20}/></button>)}
-                                    </>
-                                ) : (
-                                    <button onClick={() => setIsOpen(false)} className="w-full py-3 bg-slate-700 text-white rounded-xl font-bold hover:bg-slate-600 transition-all">Close</button>
-                                )}
-                            </div>
-                        </motion.div>
-                    </div>,
-                    document.body 
-                )}
-            </AnimatePresence>
+// 🛡️ FIXED REVIEW SECTION COMPONENT
+const ReviewSection = ({
+  id,
+  label,
+  children,
+  className = "",
+  flagPosition = "right-0 -top-2 md:-right-3 md:-top-3",
+}) => {
+  const context = useContext(ReviewContext);
+
+  if (!context) return <div className={className}>{children}</div>;
+
+  const { isAdminView, isAuthorView, feedback, toggleFeedback, isResubmission } = context;
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [comment, setComment] = useState("");
+
+  const hasIssue = !!feedback?.[id];
+  const shouldShowFlag = isAdminView || (isAuthorView && hasIssue);
+
+  useEffect(() => {
+    if (feedback?.[id]) setComment(feedback[id]);
+    else setComment("");
+  }, [feedback, id, isOpen]);
+
+  if (!shouldShowFlag) {
+    return <div className={className}>{children}</div>;
+  }
+
+  const flagClasses = hasIssue
+    ? isResubmission
+      ? "bg-blue-600 hover:bg-blue-500 text-white"
+      : "bg-red-600 hover:bg-red-500 text-white"
+    : "bg-white text-slate-400 border border-slate-200 hover:bg-slate-50";
+
+  const handleFlagClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsOpen(true);
+  };
+
+  return (
+    <div
+      className={`relative ${className}`}
+      style={{ pointerEvents: "auto" }} // 🔥 CRITICAL FIX
+    >
+      {children}
+
+      {/* FLAG BUTTON */}
+      <button
+        type="button"
+        onClick={handleFlagClick}
+        onMouseDown={(e) => e.stopPropagation()}
+        className={`absolute ${flagPosition} z-[9999] p-2 rounded-full shadow-xl transition-transform hover:scale-110 cursor-pointer ${flagClasses}`}
+      >
+        {hasIssue ? <Flag size={16} fill="currentColor" /> : <Flag size={16} />}
+      </button>
+
+      {/* AUTHOR BADGE */}
+      {!isAdminView && isAuthorView && hasIssue && (
+        <div
+          className={`absolute ${flagPosition} z-[9999] px-3 py-1.5 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center gap-1 animate-pulse`}
+        >
+          <AlertTriangle size={12} />
+          Action Required
         </div>
-    );
+      )}
+
+      {/* MODAL — PORTALED TO BODY */}
+      {isOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100000] flex items-center justify-center p-4"
+            onClick={() => setIsOpen(false)}
+          >
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+            <div
+              className="relative w-full max-w-md bg-[#1A1F2E] border border-white/10 rounded-2xl shadow-2xl p-6 z-[100001]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                  {isResubmission ? "Verify Modification" : `Flag: ${label}`}
+                </span>
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="p-2 hover:bg-white/10 rounded-full"
+                >
+                  <X size={18} className="text-slate-400 hover:text-white" />
+                </button>
+              </div>
+
+              <textarea
+                className="w-full h-32 bg-black/30 border border-white/10 rounded-xl p-4 text-white resize-none mb-5 focus:outline-none focus:border-orange-500"
+                placeholder="Describe exactly what needs to be changed..."
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                autoFocus={isAdminView}
+                readOnly={!isAdminView}
+              />
+
+              <div className="flex gap-3">
+                {isAdminView ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        if (!comment.trim()) {
+                          toast.error("Please describe the issue");
+                          return;
+                        }
+                        toggleFeedback(id, comment);
+                        setIsOpen(false);
+                        toast.success("Issue flagged");
+                      }}
+                      className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold"
+                    >
+                      Flag Issue
+                    </button>
+
+                    {hasIssue && (
+                      <button
+                        onClick={() => {
+                          toggleFeedback(id, null);
+                          setComment("");
+                          setIsOpen(false);
+                          toast.success("Flag removed");
+                        }}
+                        className="px-4 py-3 rounded-xl bg-green-600 text-white font-bold"
+                      >
+                        <Check size={18} />
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setIsOpen(false)}
+                    className="w-full py-3 rounded-xl bg-slate-700 text-white font-bold"
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+    </div>
+  );
 };
