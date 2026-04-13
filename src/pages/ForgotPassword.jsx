@@ -1,12 +1,13 @@
 // src/pages/ForgotPassword.jsx
 import { useState } from "react";
 import { Mail, MapPin, ArrowLeft } from "lucide-react";
+import { Link } from "react-router-dom";
+import toast, { Toaster } from "react-hot-toast";
+
 import { useAuth } from "../contexts/AuthContext";
 import Input from "../components/ui/Input";
 import Button from "../components/ui/Button";
 import AuthCard from "../components/ui/AuthCard";
-import { Link } from "react-router-dom";
-import toast, { Toaster } from "react-hot-toast";
 
 export default function ForgotPassword() {
   const { resetPassword } = useAuth();
@@ -29,7 +30,6 @@ export default function ForgotPassword() {
       toast.success("Password reset link sent! Check your inbox.");
       setEmail("");
     } catch (err) {
-      // Firebase error mapping
       const msg =
         err.code === "auth/user-not-found"
           ? "No account found with this email."
@@ -43,19 +43,16 @@ export default function ForgotPassword() {
 
   return (
     <div
-      className="min-h-screen bg-cover bg-center bg-no-repeat flex items-center justify-center p-4 relative animate-fadeIn"
+      className="min-h-screen bg-cover bg-center bg-no-repeat flex items-center justify-center p-4 relative"
       style={{
         backgroundImage:
           "url('https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=80&w=2070&auto=format&fit=crop')",
       }}
     >
       <Toaster position="top-center" />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" />
 
-      {/* Overlay */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"></div>
-
-      <div className="relative z-10 w-full max-w-md animate-slideUp">
-        {/* Brand Icon */}
+      <div className="relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-orange-500/20 text-orange-400 mb-4 border border-orange-500/30">
             <MapPin className="w-6 h-6" />
@@ -64,11 +61,10 @@ export default function ForgotPassword() {
             Account Recovery
           </h1>
           <p className="text-gray-300 mt-2 text-sm">
-            We’ll help you get back on track.
+            We'll help you get back on track.
           </p>
         </div>
 
-        {/* Glass Card */}
         <AuthCard title="Reset Password">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="text-gray-400 text-sm text-center mb-2">

@@ -3,7 +3,7 @@ import { Bell, Check, ExternalLink, AlertCircle, CheckCircle2, Info, Zap, Messag
 import { collection, query, where, orderBy, onSnapshot, limit } from "firebase/firestore";
 import { db } from "../services/firebase"; 
 import { useAuth } from "../contexts/AuthContext"; 
-import { markAllAsRead } from "../services/notificationService";
+import { getNotificationRecipientIds, markAllAsRead, normalizeNotification, sortNotificationsByDate } from "../services/notificationService";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -15,6 +15,9 @@ const getNotificationStyle = (type) => {
         case 'warning': return { icon: <Zap size={18} />, color: 'text-orange-500', bg: 'bg-orange-50 dark:bg-orange-900/10' };
         case 'social': return { icon: <Heart size={18} />, color: 'text-pink-500', bg: 'bg-pink-50 dark:bg-pink-900/10' };
         case 'comment': return { icon: <MessageSquare size={18} />, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/10' };
+        case 'gift': return { icon: <CheckCircle2 size={18} />, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/10' };
+        case 'like': return { icon: <Heart size={18} />, color: 'text-pink-500', bg: 'bg-pink-50 dark:bg-pink-900/10' };
+        case 'track': return { icon: <Zap size={18} />, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/10' };
         default: return { icon: <Info size={18} />, color: 'text-slate-500', bg: 'bg-slate-50 dark:bg-slate-800' };
     }
 };
@@ -31,24 +34,19 @@ export default function NotificationBell({ isAdmin }) {
   useEffect(() => {
     if (!user?.uid) return;
 
-    // 1. Always listen to Personal notifications
-    const targetIds = [user.uid];
-
-    // 2. If Admin, also listen to 'admin' channel
-    if (isAdmin) targetIds.push('admin');
-
-    // 3. Future Proof: Listen to 'broadcast' channel for system-wide announcements
-    targetIds.push('broadcast');
+    const targetIds = getNotificationRecipientIds(user.uid, { isAdmin });
 
     const q = query(
       collection(db, "notifications"),
-      where("recipientId", "in", targetIds), // <--- THE KEY UPGRADE
+      where("recipientId", "in", targetIds),
       orderBy("createdAt", "desc"),
       limit(50)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const data = sortNotificationsByDate(
+        snapshot.docs.map(doc => normalizeNotification({ id: doc.id, ...doc.data() }))
+      );
       setNotifications(data);
       setUnreadCount(data.filter(n => !n.read).length);
     });
@@ -70,9 +68,7 @@ export default function NotificationBell({ isAdmin }) {
   const handleOpen = () => {
     setIsOpen(!isOpen);
     if (!isOpen && unreadCount > 0) {
-        // Mark everything visible as read
-        const targetIds = [user.uid, 'broadcast'];
-        if(isAdmin) targetIds.push('admin');
+        const targetIds = getNotificationRecipientIds(user.uid, { isAdmin });
         markAllAsRead(targetIds); 
     }
   };

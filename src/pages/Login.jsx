@@ -21,7 +21,7 @@ export default function Login() {
 
     try {
       await login(form.email, form.password);
-      navigate("/dashboard");
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       setError("Invalid login credentials.");
     } finally {

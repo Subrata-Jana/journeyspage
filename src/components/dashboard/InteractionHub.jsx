@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom"; 
-import { collection, query, where, limit, onSnapshot, doc, updateDoc } from "firebase/firestore"; 
+import { collection, query, where, limit, onSnapshot, doc, updateDoc, orderBy } from "firebase/firestore"; 
 import { db } from "../../services/firebase"; 
 import { useAuth } from "../../contexts/AuthContext"; 
 import { useNavigate } from "react-router-dom"; 
@@ -8,6 +8,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import * as LucideIcons from "lucide-react"; 
 import { Bell, Heart, X, Sparkles, Check, Quote, Star, User } from "lucide-react"; 
 import confetti from "canvas-confetti";
+import { isAuthorizedAdmin } from "../../utils/admin";
+import { getNotificationRecipientIds, markAllAsRead, normalizeNotification, sortNotificationsByDate } from "../../services/notificationService";
 
 // --- 1. DYNAMIC ICON RENDERER ---
 const DynamicIcon = ({ name, className, size = 24 }) => {
@@ -72,7 +74,7 @@ const getRarityTheme = (rarity) => {
 };
 
 export default function InteractionHub() {
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -80,15 +82,16 @@ export default function InteractionHub() {
   const [playingLikeId, setPlayingLikeId] = useState(null); 
   const [isOpen, setIsOpen] = useState(false); 
   const dropdownRef = useRef(null);
+  const isAdmin = isAuthorizedAdmin(user, userProfile);
 
   // --- FETCH REGISTRY ---
   const [giftRegistry, setGiftRegistry] = useState({});
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "system", "gameRules"), (docSnap) => {
+    const unsub = onSnapshot(doc(db, "meta", "loot"), (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
-            const lootList = data.loot || [];
+            const lootList = data.items || [];
             const registryMap = {};
             lootList.forEach(item => {
                 registryMap[item.name.trim().toLowerCase()] = {
@@ -126,16 +129,23 @@ export default function InteractionHub() {
 
   // Live Listener
   useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, "notifications"), where("recipientId", "==", user.uid), limit(50));
+    if (!user?.uid) return;
+    const targetIds = getNotificationRecipientIds(user.uid, { isAdmin });
+    const q = query(
+        collection(db, "notifications"),
+        where("recipientId", "in", targetIds),
+        orderBy("createdAt", "desc"),
+        limit(50)
+    );
     const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      data.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      const data = sortNotificationsByDate(
+        snap.docs.map(d => normalizeNotification({ id: d.id, ...d.data() }))
+      );
       setNotifications(data);
       setUnreadCount(data.filter(n => !n.read).length);
     });
     return () => unsub();
-  }, [user]);
+  }, [isAdmin, user?.uid]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -178,9 +188,9 @@ export default function InteractionHub() {
   };
 
   const markAllRead = () => {
-      notifications.forEach(n => {
-          if(!n.read) updateDoc(doc(db, "notifications", n.id), { read: true });
-      });
+      if (!user?.uid) return;
+      const targetIds = getNotificationRecipientIds(user.uid, { isAdmin });
+      markAllAsRead(targetIds);
   };
 
   const handleProfileClick = (e, userId) => {
@@ -201,7 +211,13 @@ export default function InteractionHub() {
       
       {/* 🔔 BELL TRIGGER */}
       <button 
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+            const nextOpen = !isOpen;
+            setIsOpen(nextOpen);
+            if (nextOpen && unreadCount > 0) {
+                markAllRead();
+            }
+        }}
         className={`p-2.5 rounded-xl border transition-all relative group z-[60]
             ${isOpen 
                 ? 'bg-orange-500 text-white border-orange-600 shadow-lg' 

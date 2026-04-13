@@ -6,16 +6,15 @@ import {
   AlertCircle, Clock, RotateCcw, CheckCircle,
   Users, Zap, Share2, MoreVertical, Heart, Calendar, Gift 
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import toast, { Toaster } from "react-hot-toast";
 import { motion, useMotionTemplate, useMotionValue } from "framer-motion"; 
 
 import { useAuth } from "../contexts/AuthContext";
-import { db, storage } from "../services/firebase";
+import { db } from "../services/firebase";
 import {
-  collection, query, where, getDocs, getDoc, orderBy, limit, deleteDoc, doc, onSnapshot, updateDoc, increment
+  collection, query, where, getDocs, orderBy, limit, doc, onSnapshot
 } from "firebase/firestore";
-import { ref, deleteObject } from "firebase/storage";
 
 import Feed from "../components/Feed";
 import { useGamification, RenderIcon } from "../hooks/useGamification";
@@ -23,12 +22,19 @@ import LevelBadge from "../components/premium/LevelBadge";
 import LevelProgress from "../components/premium/LevelProgress";
 import { processUserSession } from "../services/gamificationService";
 import InteractionHub from "../components/dashboard/InteractionHub"; 
+import { deleteStoryWithAssets } from "../services/storyCleanupService";
+import { getProfilePhotoUrl } from "../utils/userProfile";
 
 export default function Dashboard() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialView = searchParams.get("view") || "overview";
+  const initialHubTab = searchParams.get("hub") || "explore";
+  const initialSearch = searchParams.get("q") || "";
+  const initialFilterStatus = searchParams.get("status") || "all";
   
-  const [currentView, setCurrentView] = useState("overview");
+  const [currentView, setCurrentView] = useState(initialView);
   const [stories, setStories] = useState([]); 
   const [loadingStories, setLoadingStories] = useState(true);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -36,13 +42,41 @@ export default function Dashboard() {
   const [userData, setUserData] = useState({ xp: 0, badges: [], inventory: [], name: "" });
   
   // ⚡ CHANGE: Default tab set to "explore"
-  const [hubTab, setHubTab] = useState("explore");
+  const [hubTab, setHubTab] = useState(initialHubTab);
   
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const [filterStatus, setFilterStatus] = useState(initialFilterStatus);
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
   const [siteLogo, setSiteLogo] = useState(null);
   const { currentRank, badges, loot, loading: gameLoading } = useGamification(userData.xp, userData.badges, userData.inventory);
+
+  useEffect(() => {
+    const nextView = searchParams.get("view") || "overview";
+    const nextHub = searchParams.get("hub") || "explore";
+    const nextSearch = searchParams.get("q") || "";
+    const nextStatus = searchParams.get("status") || "all";
+
+    if (nextView !== currentView) setCurrentView(nextView);
+    if (nextHub !== hubTab) setHubTab(nextHub);
+    if (nextSearch !== searchQuery) setSearchQuery(nextSearch);
+    if (nextStatus !== filterStatus) setFilterStatus(nextStatus);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams();
+
+    if (currentView !== "overview") nextParams.set("view", currentView);
+    if (hubTab !== "explore") nextParams.set("hub", hubTab);
+    if (searchQuery.trim()) nextParams.set("q", searchQuery);
+    if (filterStatus !== "all") nextParams.set("status", filterStatus);
+
+    const currentParams = searchParams.toString();
+    const targetParams = nextParams.toString();
+
+    if (currentParams !== targetParams) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [currentView, hubTab, searchQuery, filterStatus, searchParams, setSearchParams]);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -64,14 +98,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!user?.uid) return;
-    const unsubUser = onSnapshot(doc(db, "users", user.uid), async (docSnap) => {
+    const unsubUser = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setUserData(data);
-        const today = new Date().toDateString();
-        if (data.lastLogin !== today) {
-            try { await updateDoc(doc(db, "users", user.uid), { xp: increment(10), lastLogin: today }); toast.success("Daily Login Bonus: +10 XP!", { icon: "🌞" }); } catch (e) { console.error(e); }
-        }
       }
     });
     return () => unsubUser();
@@ -113,25 +143,17 @@ export default function Dashboard() {
     loadDisplayStories();
   }, [user?.uid, currentView]);
 
-  const handleLogout = async (e) => { if(e) e.stopPropagation(); try { await logout(); navigate("/login"); } catch (error) { toast.error("Failed to log out"); } };
+  const handleLogout = async (e) => { if(e) e.stopPropagation(); try { await logout(); navigate("/login", { replace: true }); } catch (error) { toast.error("Failed to log out"); } };
 
   const handleDeleteDraft = async (id, status, published) => {
-    if (published && status !== "returned") return toast.error("Cannot delete published/pending stories.");
+    const normalizedStatus = getStoryWorkflowStatus({ status, published });
+    if (normalizedStatus === "pending" || normalizedStatus === "approved") {
+      return toast.error("Cannot delete published/pending stories.");
+    }
     if (!window.confirm("Delete this story permanently?")) return;
     const toastId = toast.loading("Deleting...");
     try {
-      const storyRef = doc(db, "stories", id);
-      const storySnap = await getDoc(storyRef);
-      if (storySnap.exists()) {
-        const data = storySnap.data();
-        const imageRefs = [];
-        if (data.coverImage) imageRefs.push(ref(storage, data.coverImage));
-        if (Array.isArray(data.gallery)) { data.gallery.forEach(item => { const url = typeof item === "string" ? item : item.url; if (url) imageRefs.push(ref(storage, url)); }); }
-        const daysSnap = await getDocs(collection(db, "stories", id, "days"));
-        await Promise.all(daysSnap.docs.map(d => deleteDoc(d.ref)));
-        await Promise.allSettled(imageRefs.map(deleteObject));
-      }
-      await deleteDoc(storyRef);
+      await deleteStoryWithAssets(id);
       setStories(prev => prev.filter(s => s.id !== id));
       toast.success("Deleted", { id: toastId });
     } catch (e) { toast.error("Delete failed", { id: toastId }); }
@@ -139,11 +161,12 @@ export default function Dashboard() {
 
   const filteredStories = stories.filter(story => {
     const matchesSearch = (story.title || "").toLowerCase().includes(searchQuery.toLowerCase());
+    const workflowStatus = getStoryWorkflowStatus(story);
     let matchesFilter = true;
-    if (filterStatus === "published") matchesFilter = story.status === "approved";
-    if (filterStatus === "draft") matchesFilter = !story.published;
-    if (filterStatus === "review") matchesFilter = story.published && story.status !== "approved" && story.status !== "returned";
-    if (filterStatus === "action") matchesFilter = story.status === "returned";
+    if (filterStatus === "published") matchesFilter = workflowStatus === "approved";
+    if (filterStatus === "draft") matchesFilter = workflowStatus === "draft";
+    if (filterStatus === "review") matchesFilter = workflowStatus === "pending";
+    if (filterStatus === "action") matchesFilter = workflowStatus === "returned";
     return matchesSearch && matchesFilter;
   });
 
@@ -175,7 +198,7 @@ export default function Dashboard() {
              <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/5 rounded-full blur-2xl -mr-10 -mt-10 transition-opacity opacity-50 group-hover:opacity-100"/>
              <div className="flex items-center gap-3 mb-3">
                 <div className="relative shrink-0">
-                    <img src={userData.photoURL || `https://ui-avatars.com/api/?name=${userData.name || 'User'}`} className="w-12 h-12 rounded-full object-cover border-2 border-white dark:border-[#0B0F19] shadow-sm" alt="User" />
+                    <img src={getProfilePhotoUrl(userData) || `https://ui-avatars.com/api/?name=${userData.name || 'User'}`} className="w-12 h-12 rounded-full object-cover border-2 border-white dark:border-[#0B0F19] shadow-sm" alt="User" />
                     <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#0B0F19] rounded-full"></div>
                 </div>
                 <div className="flex-1 min-w-0">
@@ -342,10 +365,16 @@ const formatStoryDate = (story) => {
     return story.month || "Unknown Date";
 };
 
+const getStoryWorkflowStatus = (story) => {
+    if (story?.status) return story.status;
+    return story?.published ? "pending" : "draft";
+};
+
 const getStatusConfig = (story) => { 
-    if (story.status === 'returned') return { label: "NEEDS REVISION", color: "bg-red-500 text-white border-red-600 shadow-red-500/30", icon: <RotateCcw size={12} strokeWidth={3}/>, canEdit: true }; 
-    if (story.status === 'approved') return { label: "PUBLISHED", color: "bg-emerald-500 text-white border-emerald-600 shadow-emerald-500/30", icon: <CheckCircle size={12} strokeWidth={3}/>, canEdit: false }; 
-    if (story.published) return { label: "IN REVIEW", color: "bg-blue-500 text-white border-blue-600 shadow-blue-500/30", icon: <Clock size={12} strokeWidth={3}/>, canEdit: false }; 
+    const workflowStatus = getStoryWorkflowStatus(story);
+    if (workflowStatus === 'returned') return { label: "NEEDS REVISION", color: "bg-red-500 text-white border-red-600 shadow-red-500/30", icon: <RotateCcw size={12} strokeWidth={3}/>, canEdit: true }; 
+    if (workflowStatus === 'approved') return { label: "PUBLISHED", color: "bg-emerald-500 text-white border-emerald-600 shadow-emerald-500/30", icon: <CheckCircle size={12} strokeWidth={3}/>, canEdit: false }; 
+    if (workflowStatus === 'pending') return { label: "IN REVIEW", color: "bg-blue-500 text-white border-blue-600 shadow-blue-500/30", icon: <Clock size={12} strokeWidth={3}/>, canEdit: false }; 
     return { label: "DRAFT", color: "bg-slate-500 text-white border-slate-600", icon: <FileText size={12} strokeWidth={3}/>, canEdit: true }; 
 };
 
@@ -477,7 +506,30 @@ function StoryRow({ story, navigate, onDelete }) {
             </div>
             <div className="flex items-center gap-3">
                 <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-2 py-1 rounded border ${status.color.replace('shadow-lg','').replace('text-white','text-current').replace('bg-','bg-opacity-10 bg-')}`}>{status.icon} {status.label}</span>
-                {status.canEdit && (<button onClick={() => navigate(`/create-story?edit=${story.id}`)} className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors"><Pencil size={16}/></button>)}
+                {status.canEdit && (
+                    <>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/create-story?edit=${story.id}`);
+                            }}
+                            className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors"
+                            title="Edit Story"
+                        >
+                            <Pencil size={16}/>
+                        </button>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete(story.id, story.status, story.published);
+                            }}
+                            className="p-2 text-red-500/80 hover:text-white bg-red-600/10 hover:bg-red-600 rounded-lg transition-colors border border-red-600/20 hover:border-red-600"
+                            title="Delete Story"
+                        >
+                            <Trash2 size={16}/>
+                        </button>
+                    </>
+                )}
             </div>
         </div>
     ) 

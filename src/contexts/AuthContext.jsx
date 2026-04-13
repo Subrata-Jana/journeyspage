@@ -31,6 +31,10 @@ import {
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 import { auth, db, storage } from "../services/firebase";
+import {
+  buildAvatarFields,
+  normalizeUserProfile,
+} from "../utils/userProfile";
 
 const AuthContext = createContext(null);
 
@@ -52,20 +56,20 @@ export const AuthProvider = ({ children }) => {
       const snap = await getDoc(refDoc);
 
       if (snap.exists()) {
-        setUserProfile(snap.data());
+        setUserProfile(normalizeUserProfile(snap.data()));
       } else {
         // 🛡️ AUTO-CREATE PROFILE
-        const profile = {
+        const profile = normalizeUserProfile({
           name: firebaseUser.displayName || "",
           email: firebaseUser.email || "",
-          avatarUrl: "",
+          ...buildAvatarFields(""),
           onboarded: false,
           darkMode: false,
           level: 1,
           points: 0,
           badges: [],
           createdAt: serverTimestamp(),
-        };
+        });
 
         await setDoc(refDoc, profile);
         setUserProfile(profile);
@@ -103,17 +107,17 @@ export const AuthProvider = ({ children }) => {
     // Update Firebase Auth Profile
     if (name) await fbUpdateProfile(cred.user, { displayName: name });
 
-    const profile = {
+    const profile = normalizeUserProfile({
       name,
       email,
-      avatarUrl: "",
+      ...buildAvatarFields(""),
       onboarded: false,
       darkMode: false,
       level: 1,
       points: 0,
       badges: [],
       createdAt: serverTimestamp(),
-    };
+    });
 
     await setDoc(doc(db, "users", cred.user.uid), profile);
     setUserProfile(profile);
@@ -149,8 +153,9 @@ export const AuthProvider = ({ children }) => {
       const snap = await uploadBytes(storageRef, file);
       const url = await getDownloadURL(snap.ref);
 
-      await updateDoc(doc(db, "users", user.uid), { avatarUrl: url });
-      setUserProfile((p) => ({ ...p, avatarUrl: url }));
+      const avatarFields = buildAvatarFields(url);
+      await updateDoc(doc(db, "users", user.uid), avatarFields);
+      setUserProfile((p) => normalizeUserProfile({ ...p, ...avatarFields }));
 
       setAvatarUploadProgress(null);
       return url;

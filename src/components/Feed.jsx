@@ -5,11 +5,89 @@ import {
   Mountain, Flag, Calendar, Wallet, ChevronRight, Clock, Gift, Filter, Search, X
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, updateDoc, arrayUnion, arrayRemove, getCountFromServer } from "firebase/firestore";
+import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, getCountFromServer } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import toast from "react-hot-toast";
+import { fetchGameRules, calculateRank } from "../utils/gameRules";
+import { toggleUserTrack } from "../services/gamificationService";
+import { sendNotification } from "../services/notificationService";
 import { useMetaOptions } from "../hooks/useMetaOptions"; // ⚡ IMPORTED FOR FILTERS
+
+const getStoryLocationMeta = (story) => story?.locationData?.value || story?.locationData || {};
+
+const tokenize = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+const getStoryLocationTokens = (story) => {
+  const locationMeta = getStoryLocationMeta(story);
+  const metaTokens = Array.isArray(locationMeta.searchTokens)
+    ? locationMeta.searchTokens
+    : [];
+
+  return Array.from(
+    new Set(
+      [
+        story.location,
+        story.state,
+        story.country,
+        locationMeta.displayLabel,
+        locationMeta.placeName,
+        locationMeta.locality,
+        locationMeta.district,
+        locationMeta.state,
+        locationMeta.country,
+        ...metaTokens,
+      ]
+        .filter(Boolean)
+        .flatMap(tokenize)
+    )
+  );
+};
+
+const getStorySearchTokens = (story) =>
+  Array.from(
+    new Set([
+      ...getStoryLocationTokens(story),
+      ...tokenize(story.title),
+      ...tokenize(story.tripType),
+      ...tokenize(story.category),
+    ])
+  );
+
+const matchesStorySearch = (story, searchText) =>
+  !searchText || getStorySearchTokens(story).some((token) => token.includes(searchText));
+
+const matchesStoryLocation = (story, searchText) =>
+  !searchText || getStoryLocationTokens(story).some((token) => token.includes(searchText));
+
+let cachedRanksPromise = null;
+
+const getCachedRanks = async () => {
+  if (!cachedRanksPromise) {
+    cachedRanksPromise = fetchGameRules().then(({ ranks }) => ranks || []);
+  }
+  return cachedRanksPromise;
+};
+
+const resolveRankName = async (userData, fallbackRank = "Scout") => {
+  const directRank =
+    (typeof userData?.currentRank === "string" && userData.currentRank) ||
+    userData?.currentRank?.name ||
+    userData?.badge;
+
+  if (directRank) return directRank;
+
+  const xp = Number(userData?.xp ?? 0);
+  const ranks = await getCachedRanks();
+  if (!ranks.length) return fallbackRank;
+
+  return calculateRank(ranks, xp)?.name || fallbackRank;
+};
 
 export default function Feed({ activeTab = "explore" }) {
   const { user } = useAuth(); 
@@ -86,16 +164,13 @@ export default function Feed({ activeTab = "explore" }) {
 
         const filteredStories = rawStories.filter(story => {
             // Text Search
-            const searchText = filters.search.toLowerCase();
-            const matchesSearch = !searchText || (story.title?.toLowerCase().includes(searchText) || story.location?.toLowerCase().includes(searchText));
+            const searchText = filters.search.toLowerCase().trim();
+            const matchesSearch = matchesStorySearch(story, searchText);
             
             // ⚡ SMART LOCATION FILTER
             // Checks City OR State OR Country
-            const locFilter = filters.location.toLowerCase();
-            const matchesLocation = !locFilter || 
-                story.location?.toLowerCase().includes(locFilter) || 
-                story.state?.toLowerCase().includes(locFilter) || 
-                story.country?.toLowerCase().includes(locFilter);
+            const locFilter = filters.location.toLowerCase().trim();
+            const matchesLocation = matchesStoryLocation(story, locFilter);
             // Dropdowns
             const matchesDifficulty = !filters.difficulty || story.difficulty === filters.difficulty;
             const matchesType = !filters.tripType || story.tripType === filters.tripType;
@@ -120,17 +195,31 @@ export default function Feed({ activeTab = "explore" }) {
 
   const handleToggleTrack = async (authorId) => {
     if (!user) return toast.error("Please login to track scouts");
+    if (user.uid === authorId) return toast.error("You cannot track yourself");
+
     const isTracking = trackingList.includes(authorId);
-    const userRef = doc(db, "users", user.uid);
     try {
-        if (isTracking) {
-            await updateDoc(userRef, { tracking: arrayRemove(authorId) });
+        const result = await toggleUserTrack(authorId, user.uid);
+        if (!result.success) throw result.error || new Error("track-failed");
+
+        if (result.isTracking) {
+            setTrackingList(prev => [...new Set([...prev, authorId])]);
+            await sendNotification({
+                recipientId: authorId,
+                type: "track",
+                title: "New Tracker",
+                message: `${user.displayName || "A Scout"} started tracking you!`,
+                link: `/profile/${user.uid}`,
+                actorId: user.uid,
+                actorName: user.displayName || "A Scout",
+                entityType: "profile",
+                entityId: user.uid,
+                channel: "social",
+            });
+            toast.success(`Following Scout! (+${result.xpGained || 0} XP)`);
+        } else {
             setTrackingList(prev => prev.filter(id => id !== authorId));
             toast.success("Unfollowed Scout");
-        } else {
-            await updateDoc(userRef, { tracking: arrayUnion(authorId) });
-            setTrackingList(prev => [...prev, authorId]);
-            toast.success("Following Scout! +1");
         }
     } catch (error) { toast.error("Failed to update tracking"); }
   };
@@ -145,7 +234,7 @@ export default function Feed({ activeTab = "explore" }) {
               <div className="flex gap-4">
                   <div className="relative flex-1">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
-                      <input type="text" placeholder="Search destinations, titles..." className="w-full pl-10 pr-4 py-3 rounded-xl bg-white dark:bg-[#111625] border border-slate-200 dark:border-white/10 focus:border-orange-500 outline-none text-slate-900 dark:text-white" value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} />
+                      <input type="text" placeholder="Search titles, places, states, countries..." className="w-full pl-10 pr-4 py-3 rounded-xl bg-white dark:bg-[#111625] border border-slate-200 dark:border-white/10 focus:border-orange-500 outline-none text-slate-900 dark:text-white" value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} />
                   </div>
                   <button onClick={() => setShowFilters(!showFilters)} className={`px-4 py-3 rounded-xl border flex items-center gap-2 font-bold transition-all ${showFilters ? 'bg-orange-500 border-orange-500 text-white' : 'bg-white dark:bg-[#111625] border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 hover:text-orange-500'}`}>
                       <Filter size={18}/> Filters
@@ -156,7 +245,7 @@ export default function Feed({ activeTab = "explore" }) {
                   {showFilters && (
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                           <div className="p-5 bg-white dark:bg-[#111625] rounded-2xl border border-slate-200 dark:border-white/10 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                              <input type="text" placeholder="Country / State" className="p-3 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-sm outline-none" value={filters.location} onChange={e => setFilters({...filters, location: e.target.value})} />
+                              <input type="text" placeholder="Place / State / Country" className="p-3 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-sm outline-none" value={filters.location} onChange={e => setFilters({...filters, location: e.target.value})} />
                               <select className="p-3 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-sm outline-none text-slate-900 dark:text-white" value={filters.difficulty} onChange={e => setFilters({...filters, difficulty: e.target.value})}>
                                   <option value="">Any Difficulty</option>
                                   {difficulties.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -237,11 +326,15 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
           const userData = userDoc.data();
           
           // Update State locally
-          const livePhoto = userData.photoURL || userData.profilePhoto || userData.avatar;
+          const livePhoto =
+            userData.photoURL ||
+            userData.avatarUrl ||
+            userData.profilePhoto ||
+            userData.avatar;
           if (livePhoto && !avatarUrl) { setAvatarUrl(livePhoto); setImgError(false); }
 
-          const rank = userData.currentRank?.name || userData.badge || "Scout";
-          if (rank && authorRank === "Scout") setAuthorRank(rank);
+          const rank = await resolveRankName(userData, story.authorRank || "Scout");
+          if (rank) setAuthorRank(rank);
         }
       } catch (err) { console.log("Err fetching author data", err); }
     };
@@ -249,7 +342,7 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
     fetchAuthorData();
   }, [story.authorId]); // Removed extra dependencies to prevent loops
 
-  const authorName = story.authorName || "Scout";
+  const authorName = story.authorName || "Explorer";
   const authorInitials = authorName.substring(0, 2).toUpperCase();
   const showImage = avatarUrl && !imgError;
   const displayImage = story.coverImage || "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&q=80&w=1000";
@@ -304,7 +397,7 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
             <div className="mt-auto flex items-center justify-between pt-1">
                 <div className="flex items-center gap-2.5 cursor-pointer group/author" onClick={handleProfileClick}>
                     <div className={`w-8 h-8 rounded-full overflow-hidden border border-slate-600 group-hover/author:border-orange-500 transition-colors ${isTracking ? 'ring-1 ring-orange-500' : ''}`}>{showImage ? (<img src={avatarUrl} onError={() => setImgError(true)} className="w-full h-full object-cover" alt={authorName} />) : (<div className="w-full h-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-white">{authorInitials}</div>)}</div>
-                    <div className="flex flex-col"><span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Scout</span><span className="text-xs font-bold text-slate-300 group-hover/author:text-white transition-colors">{authorName}</span></div>
+                    <div className="flex flex-col"><span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">{authorRank || "Scout"}</span><span className="text-xs font-bold text-slate-300 group-hover/author:text-white transition-colors">{authorName}</span></div>
                 </div>
                 <button className="text-orange-500 hover:text-white hover:bg-orange-500 p-1.5 rounded-full transition-all"><ChevronRight size={18} /></button>
             </div>

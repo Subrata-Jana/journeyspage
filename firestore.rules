@@ -2,8 +2,147 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userEmail() {
+      return isSignedIn() && request.auth.token.email != null
+        ? request.auth.token.email.lower()
+        : "";
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        userEmail() == "sjsubratajana@gmail.com" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function storyData(storyId) {
+      return get(/databases/$(database)/documents/stories/$(storyId)).data;
+    }
+
+    function canReadStory(storyId) {
+      return storyData(storyId).status == "approved" ||
+        (isSignedIn() && storyData(storyId).authorId == request.auth.uid) ||
+        isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId);
+
+      allow update: if isOwner(userId) || isAdmin() || (
+        isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "trophies",
+          "xp",
+          "inventory",
+          "stats",
+          "badges",
+          "level",
+          "points",
+          "trackers",
+          "trackersCount",
+          "tracking",
+          "currentRank",
+          "lastLoginDate"
+        ])
+      );
+    }
+
+    match /notifications/{noteId} {
+      allow read: if isSignedIn() && (
+        resource.data.recipientId == request.auth.uid ||
+        resource.data.recipientId == "broadcast" ||
+        (resource.data.recipientId == "admin" && isAdmin()) ||
+        isAdmin()
+      );
+
+      allow create: if isSignedIn();
+
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.recipientId == request.auth.uid ||
+        resource.data.recipientId == "broadcast" ||
+        (resource.data.recipientId == "admin" && isAdmin())
+      );
+
+      allow delete: if isAdmin() || (
+        isSignedIn() && resource.data.recipientId == request.auth.uid
+      );
+    }
+
+    match /stories/{storyId} {
+      allow read: if resource.data.status == "approved" ||
+        (isSignedIn() && resource.data.authorId == request.auth.uid) ||
+        isAdmin();
+
+      allow create: if isSignedIn() &&
+        request.resource.data.authorId == request.auth.uid &&
+        request.resource.data.status == "draft";
+
+      allow update: if
+        isAdmin() ||
+        (
+          isSignedIn() &&
+          resource.data.authorId == request.auth.uid &&
+          request.resource.data.authorId == resource.data.authorId &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          resource.data.status in ["draft", "returned"] &&
+          request.resource.data.status in ["draft", "pending", "returned"]
+        ) ||
+        (
+          isSignedIn() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "likes",
+            "likeCount",
+            "views",
+            "shares",
+            "shareCount",
+            "sharedBy",
+            "tributeCount",
+            "giftCount",
+            "trendingScore"
+          ])
+        );
+
+      allow delete: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.authorId == request.auth.uid &&
+        resource.data.status == "draft"
+      );
+
+      match /days/{dayId} {
+        allow read: if canReadStory(storyId);
+        allow write: if isAdmin() || (
+          isSignedIn() && storyData(storyId).authorId == request.auth.uid
+        );
+      }
+
+      match /comments/{commentId} {
+        allow read: if canReadStory(storyId);
+        allow create: if isSignedIn() &&
+          request.resource.data.userId == request.auth.uid;
+        allow delete: if isAdmin() || (
+          isSignedIn() && resource.data.userId == request.auth.uid
+        );
+      }
+    }
+
+    match /meta/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /system/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }

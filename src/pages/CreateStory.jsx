@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import {
   collection,
   addDoc,
@@ -26,9 +26,10 @@ import imageCompression from 'browser-image-compression';
 import { db, storage } from "../services/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useMetaOptions } from "../hooks/useMetaOptions";
-import { sendNotification } from "../services/notificationService";
+import { notifyStorySubmittedForReview } from "../services/reviewService";
 import DatePicker from "../components/ui/DatePicker";
 import LocationPicker from "../components/ui/LocationPicker";
+import { goBackOrFallback } from "../utils/navigation";
 
 // --- HELPER: Get Color Hex from Name ---
 const getColorHex = (name) => {
@@ -45,6 +46,7 @@ const getColorHex = (name) => {
 export default function CreateStory() {
   const { user, userProfile } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get("edit");
 
@@ -80,6 +82,11 @@ export default function CreateStory() {
   const [feedback, setFeedback] = useState({}); 
 
   const isReturned = storyStatus === "returned";
+
+  const getDayFeedbackKey = useCallback(
+    (day, index) => `day_${day?.dayNumber ?? index + 1}`,
+    []
+  );
     
   // ⚡ HELPER: Mark a field as "Modified" by the user
   const trackChange = (field) => {
@@ -133,7 +140,7 @@ export default function CreateStory() {
         const storySnap = await getDoc(storyRef);
 
         if (!storySnap.exists() || storySnap.data().authorId !== user.uid) {
-          navigate("/dashboard");
+          navigate("/dashboard", { replace: true });
           return;
         }
 
@@ -187,7 +194,7 @@ export default function CreateStory() {
 
       } catch (e) {
         console.error("Edit load failed:", e);
-        navigate("/dashboard");
+        navigate("/dashboard", { replace: true });
       } finally {
         setLoading(false);
       }
@@ -209,7 +216,8 @@ export default function CreateStory() {
     return await getDownloadURL(storageRef);
   };
 
-  // ⚡ HANDLER: Location Picker with State/Country Parsing
+  // Use normalized location metadata from the picker and only keep
+  // the user-facing pieces we query/filter on at the top level.
   const handleLocationSelect = (selectedOption) => {
     trackChange('location'); 
     
@@ -217,19 +225,20 @@ export default function CreateStory() {
         setTrip(prev => ({ ...prev, location: "", country: "", state: "", locationData: null }));
         return;
     }
-
-    // ⚡ PARSE LOCATION (Assumes format: "City, State, Country")
-    const parts = selectedOption.label.split(",").map(p => p.trim());
     
-    const city = parts[0];
-    const country = parts.length > 1 ? parts[parts.length - 1] : "";
-    const state = parts.length > 2 ? parts[parts.length - 2] : "";
+    const locationMeta = selectedOption.value || {};
+    const placeName =
+      locationMeta.placeName ||
+      locationMeta.locality ||
+      locationMeta.name ||
+      selectedOption.label ||
+      "";
 
     setTrip(prev => ({
         ...prev,
-        location: city,
-        country: country, // 🆕 Store Country
-        state: state,     // 🆕 Store State
+        location: placeName,
+        country: locationMeta.country || "",
+        state: locationMeta.state || "",
         locationData: selectedOption 
     }));
   };
@@ -246,7 +255,7 @@ export default function CreateStory() {
 
   const handleDayImageChange = async (index, file) => {
     if (!file) return;
-    trackChange(`day_${trip.days[index].dayNumber}`);
+    trackChange(getDayFeedbackKey(trip.days[index], index));
     setProcessingStatus({ current: 1, total: 1, type: "Processing Day" });
     const compressedFile = await compressImage(file, 'standard');
     const days = [...trip.days];
@@ -295,14 +304,14 @@ export default function CreateStory() {
   };
   const removeGalleryImage = (index) => { trackChange('gallery'); setTrip(p => ({ ...p, gallery: p.gallery.filter((_, i) => i !== index) })); };
   const removeDayImage = (index) => { 
-      trackChange(`day_${trip.days[index].dayNumber}`);
+      trackChange(getDayFeedbackKey(trip.days[index], index));
       const days = [...trip.days]; days[index].imageFile = null; days[index].imagePreview = null; days[index].imageUrl = ""; days[index].imageCaption = ""; setTrip(p => ({ ...p, days })); 
   };
   const addDay = () => { 
-      const id = trip.days.length + 1; setTrip(p => ({ ...p, days: [...p.days, { id, title: "", story: "", departure: "", destination: "", food: "", stay: "", travel: "", highlight: "", imageFile: null, imagePreview: null, imageCaption: "" }] })); setExpandedDays([id]); 
+      const id = trip.days.length + 1; setTrip(p => ({ ...p, days: [...p.days, { id, dayNumber: id, title: "", story: "", departure: "", destination: "", food: "", stay: "", travel: "", highlight: "", imageFile: null, imagePreview: null, imageCaption: "" }] })); setExpandedDays([id]); 
   };
   const updateDay = (index, field, value) => { 
-      trackChange(`day_${trip.days[index].dayNumber}`);
+      trackChange(getDayFeedbackKey(trip.days[index], index));
       const days = [...trip.days]; days[index][field] = value; setTrip(p => ({ ...p, days })); 
   };
   const removeDay = (index) => { const days = trip.days.filter((_, i) => i !== index); setTrip(p => ({ ...p, days })); };
@@ -408,7 +417,7 @@ export default function CreateStory() {
         gallery: finalGallery, updatedAt: serverTimestamp(),
         
         // Save the cleaned feedback and flags
-        modifiedFlags: modifiedFields, 
+        modifiedFlags: targetStatus === 'pending' ? {} : modifiedFields, 
         feedback: updatedFeedback 
       };
 
@@ -421,12 +430,12 @@ export default function CreateStory() {
 
       // 7. Notify Admin
       if (publish || isReturned) {
-          await sendNotification({
-              recipientId: 'admin', 
-              type: 'info',
-              title: 'Story Revision Submitted',
-              message: `${userProfile?.name || 'An author'} has updated "${trip.title}".`,
-              link: `/story/${activeId}?adminView=true`
+          await notifyStorySubmittedForReview({
+              storyId: activeId,
+              title: trip.title,
+              authorId: user.uid,
+              authorName: userProfile?.name || "An author",
+              isResubmission: storyStatus === "returned",
           });
       }
 
@@ -449,7 +458,7 @@ export default function CreateStory() {
         });
       }
 
-      navigate("/dashboard");
+      navigate("/dashboard", { replace: true });
     } catch (e) {
       console.error(e);
       alert("Error: " + e.message);
@@ -470,7 +479,7 @@ export default function CreateStory() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0B0F19] transition-colors duration-300">
       <div className="fixed top-6 left-0 right-0 px-4 md:px-8 z-[90] flex justify-between items-center pointer-events-none">
-        <button onClick={() => navigate("/dashboard")} className="pointer-events-auto p-3 rounded-full bg-white/80 dark:bg-black/20 backdrop-blur-xl border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white hover:scale-105 transition-all shadow-lg group">
+        <button onClick={() => goBackOrFallback(navigate, "/dashboard", location.state?.from)} className="pointer-events-auto p-3 rounded-full bg-white/80 dark:bg-black/20 backdrop-blur-xl border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white hover:scale-105 transition-all shadow-lg group">
           <ArrowLeft size={24} className="group-hover:-translate-x-1 transition-transform" />
         </button>
         <button onClick={() => setIsDark(!isDark)} className="pointer-events-auto p-3 rounded-full bg-white/80 dark:bg-black/20 backdrop-blur-xl border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white hover:rotate-12 transition-all shadow-lg">
@@ -497,7 +506,7 @@ export default function CreateStory() {
           <h1 className="text-3xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">
             {isReturned ? "Fix & Resubmit" : editId ? "Edit Journey" : "New Journey"}
           </h1>
-          <button onClick={() => navigate("/dashboard")} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-sm font-medium">Cancel</button>
+          <button onClick={() => goBackOrFallback(navigate, "/dashboard", location.state?.from)} className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-sm font-medium">Cancel</button>
         </div>
 
         {/* 🛑 STATIC REVISION BANNER */}
@@ -617,7 +626,7 @@ export default function CreateStory() {
             <div className="space-y-4">
               <AnimatePresence>
                 {trip.days.map((day, index) => {
-                    const dayKey = `day_${day.dayNumber}`;
+                    const dayKey = getDayFeedbackKey(day, index);
                     const isDayLocked = isFieldLocked(dayKey);
                     const dayFeedback = feedback[dayKey];
                     const isModified = modifiedFields[dayKey];

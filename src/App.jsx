@@ -25,19 +25,24 @@ function Layout() {
   const location = useLocation();
 
   // Define routes where we want the FULL SCREEN application feel
-  const isAppRoute = 
-    location.pathname.startsWith("/dashboard") || 
-    location.pathname.startsWith("/create-story") || 
-    location.pathname.startsWith("/admin") || 
+  const isAppRoute =
+    location.pathname.startsWith("/dashboard") ||
+    location.pathname.startsWith("/create-story") ||
+    location.pathname.startsWith("/admin") ||
     location.pathname.startsWith("/profile") ||
-    location.pathname.startsWith("/story/"); 
-  
-    return (
-    <>
-      {/* 1. Only show Global Header if NOT on an App Route */}
-      {!isAppRoute && <Header />}
+    location.pathname.startsWith("/story/");
+  const isAuthRoute =
+    location.pathname === "/login" ||
+    location.pathname === "/register" ||
+    location.pathname === "/forgot-password";
+  const hasStandaloneLayout = isAppRoute || isAuthRoute;
 
-      <main className={isAppRoute ? "" : "pt-16 min-h-screen"}>
+  return (
+    <>
+      {/* 1. Only show Global Header on public landing surfaces */}
+      {!hasStandaloneLayout && <Header />}
+
+      <main className={hasStandaloneLayout ? "" : "pt-16 min-h-screen"}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -93,8 +98,8 @@ function Layout() {
         </Routes>
       </main>
 
-      {/* 3. Only show Footer if NOT on an App Route AND NOT on Home Page */}
-      {!isAppRoute && location.pathname !== "/" && <Footer />}
+      {/* 2. Show Footer on public marketing pages, including Home */}
+      {!hasStandaloneLayout && <Footer />}
     </>
   );
 }

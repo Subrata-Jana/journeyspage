@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom"; 
+import { useNavigate, useParams, useLocation } from "react-router-dom"; 
 import { useAuth } from "../contexts/AuthContext";
 import { db, storage } from "../services/firebase";
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
@@ -18,10 +18,13 @@ import { formatDistanceToNow } from 'date-fns';
 import { useGamification, RenderIcon } from "../hooks/useGamification";
 import LevelBadge from "../components/premium/LevelBadge";
 import LevelProgress from "../components/premium/LevelProgress";
+import { buildAvatarFields, getProfilePhotoUrl } from "../utils/userProfile";
+import { goBackOrFallback } from "../utils/navigation";
 
 export default function Profile() {
   const { user } = useAuth(); // Current logged-in user
   const navigate = useNavigate();
+  const location = useLocation();
   const { userId } = useParams(); // Get ID from URL if present
 
   // Determine whose profile to show
@@ -94,7 +97,7 @@ export default function Profile() {
             bio: data.bio || "Exploring the world, one story at a time.",
             location: data.location || "",
             website: data.website || "",
-            photoURL: data.photoURL || "",
+            photoURL: getProfilePhotoUrl(data),
             coverURL: data.coverURL || "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=2070&auto=format&fit=crop",
             facebook: data.facebook || "",
             instagram: data.instagram || "",
@@ -178,7 +181,12 @@ export default function Profile() {
     if (!isOwnProfile) return; 
     try {
       const updatedData = {
-          ...profileData,
+          name: profileData.name,
+          bio: profileData.bio,
+          location: profileData.location,
+          photoURL: profileData.photoURL,
+          ...buildAvatarFields(profileData.photoURL),
+          coverURL: profileData.coverURL,
           website: cleanUrl(profileData.website),
           facebook: cleanUrl(profileData.facebook),
           instagram: cleanUrl(profileData.instagram),
@@ -187,7 +195,7 @@ export default function Profile() {
           updatedAt: new Date()
       };
       
-      setProfileData(updatedData);
+      setProfileData((prev) => ({ ...prev, ...updatedData }));
       await setDoc(doc(db, "users", targetId), updatedData, { merge: true });
       setIsEditing(false);
       toast.success("Profile updated!");
@@ -207,8 +215,12 @@ export default function Profile() {
       const storageRef = ref(storage, `users/${targetId}/${field}_${Date.now()}`);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
+      const imageFields =
+        field === "photoURL"
+          ? { ...buildAvatarFields(url) }
+          : { [field]: url };
       setProfileData(prev => ({ ...prev, [field]: url }));
-      await setDoc(doc(db, "users", targetId), { [field]: url }, { merge: true });
+      await setDoc(doc(db, "users", targetId), imageFields, { merge: true });
       toast.success("Image updated!", { id: toastId });
     } catch (error) {
       console.error(error);
@@ -231,7 +243,7 @@ export default function Profile() {
 
       {/* NAVIGATION & THEME TOGGLE */}
       <div className="fixed top-6 left-6 z-50 flex gap-3">
-        <button onClick={() => navigate('/dashboard')} className="bg-white/80 dark:bg-black/50 backdrop-blur-md border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white px-4 py-2 rounded-full flex items-center gap-2 hover:scale-105 transition-all shadow-sm">
+        <button onClick={() => goBackOrFallback(navigate, '/dashboard', location.state?.from)} className="bg-white/80 dark:bg-black/50 backdrop-blur-md border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white px-4 py-2 rounded-full flex items-center gap-2 hover:scale-105 transition-all shadow-sm">
             <ArrowLeft size={18} /> Back to Dashboard
         </button>
         <button onClick={() => setIsDark(!isDark)} className="bg-white/80 dark:bg-black/50 backdrop-blur-md border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white p-2 rounded-full hover:scale-110 transition-all shadow-sm">

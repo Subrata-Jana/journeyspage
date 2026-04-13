@@ -1,14 +1,10 @@
 import { useAuth } from "../contexts/AuthContext";
 import { Navigate } from "react-router-dom";
 import { ShieldAlert } from "lucide-react";
+import { isAuthorizedAdmin } from "../utils/admin";
 
 export default function AdminGuard({ children }) {
   const { user, loading } = useAuth();
-
-  // 🔒 STRICT SECURITY: Only this specific email is allowed
-  const AUTHORIZED_ADMINS = [
-    "sjsubratajana@gmail.com"
-  ];
 
   if (loading) {
     return (
@@ -21,11 +17,8 @@ export default function AdminGuard({ children }) {
     );
   }
 
-  // Debug: See who is trying to enter
-  if (user) console.log("User attempting admin access:", user.email);
-
   // If user is logged in BUT not the admin -> Kick to Home
-  if (user && !AUTHORIZED_ADMINS.includes(user.email)) {
+  if (user && !isAuthorizedAdmin(user)) {
     return <Navigate to="/" replace />;
   }
 

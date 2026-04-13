@@ -10,6 +10,8 @@ import { db } from "../services/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import Modal from "./ui/Modal";
 import toast from "react-hot-toast";
+import { isAuthorizedAdmin } from "../utils/admin";
+import { getProfilePhotoUrl } from "../utils/userProfile";
 // ⚡ IMPORT NOTIFICATION BELL
 import NotificationBell from "./NotificationBell"; 
 
@@ -18,7 +20,7 @@ export default function Header() {
   const navigate = useNavigate();
 
   // ⚡ DEFINE ADMIN STATUS
-  const isAdmin = userProfile?.role === 'admin';
+  const isAdmin = isAuthorizedAdmin(user, userProfile);
 
   // --- 1. DARK MODE ---
   const [dark, setDark] = useState(() => {
@@ -94,7 +96,7 @@ export default function Header() {
       setMenuOpen(false); 
       setMobileMenuOpen(false);
       toast.success("Logged out successfully"); 
-      navigate("/login"); 
+      navigate("/login", { replace: true }); 
     } catch (error) {
       console.error("Logout failed", error);
       toast.error("Failed to log out");
@@ -193,7 +195,7 @@ export default function Header() {
                     }`}
                   >
                     <img
-                      src={userProfile?.photoURL || `https://ui-avatars.com/api/?name=${userProfile?.name || 'User'}`}
+                      src={getProfilePhotoUrl(userProfile) || `https://ui-avatars.com/api/?name=${userProfile?.name || 'User'}`}
                       className="h-9 w-9 rounded-full object-cover border-2 border-white/20"
                       alt="Profile"
                     />
@@ -274,7 +276,7 @@ export default function Header() {
                         {user ? (
                             <>
                                 <div className="flex items-center gap-4 pb-6 border-b border-slate-100 dark:border-white/5">
-                                    <img src={userProfile?.photoURL} className="w-14 h-14 rounded-full border-2 border-slate-200 dark:border-white/10 shadow-md" alt="User"/>
+                                    <img src={getProfilePhotoUrl(userProfile) || `https://ui-avatars.com/api/?name=${userProfile?.name || 'User'}`} className="w-14 h-14 rounded-full border-2 border-slate-200 dark:border-white/10 shadow-md object-cover" alt="User"/>
                                     <div>
                                         <div className="font-black text-xl text-slate-900 dark:text-white">{userProfile?.name}</div>
                                         <div className="text-sm text-slate-500 dark:text-slate-400">{userProfile?.email}</div>

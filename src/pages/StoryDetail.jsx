@@ -20,8 +20,13 @@ import GallerySlider from "../components/GallerySlider";
 import ThreeSixtyViewer from "../components/ThreeSixtyViewer";
 import { toggleStoryLike, toggleUserTrack, trackShare } from "../services/gamificationService";
 import { sendNotification } from "../services/notificationService";
+import { approveStoryReview, returnStoryForRevision } from "../services/reviewService";
 import TreasureSpawner from "../components/premium/TreasureSpawner";
 import GiftModal from "../components/gamification/GiftModal";
+import SmartImage from "../components/ui/SmartImage";
+import { isAuthorizedAdmin } from "../utils/admin";
+import { goBackOrFallback } from "../utils/navigation";
+import { getProfilePhotoUrl } from "../utils/userProfile";
 
 // --- CONTEXT FOR SMART REVIEW ---
 const ReviewContext = createContext();
@@ -76,9 +81,7 @@ export default function StoryDetail() {
     const [lightboxIndex, setLightboxIndex] = useState(-1);
 
     // ⚡ ADMIN LOGIC CHECK
-    const isAdminView =
-        (location.state?.adminView === true) ||
-        (currentUser?.email?.toLowerCase() === "sjsubratajana@gmail.com");
+    const isAdminView = isAuthorizedAdmin(currentUser);
 
     const [feedback, setFeedback] = useState({});
     const [isSubmittingReview, setIsSubmittingReview] = useState(false);
@@ -139,11 +142,12 @@ export default function StoryDetail() {
             try {
                 const storyRef = doc(db, "stories", storyId);
                 const storySnap = await getDoc(storyRef);
-                if (!storySnap.exists()) { navigate("/dashboard"); return; }
+                if (!storySnap.exists()) { navigate("/dashboard", { replace: true }); return; }
                 const storyData = storySnap.data();
 
                 const isAuthor = currentUser?.uid === storyData.authorId;
                 const isReturned = storyData.status === 'returned';
+                const isPending = storyData.status === 'pending';
                 setIsAuthorView(isAuthor && isReturned);
 
                 if (storyData.feedback) {
@@ -155,49 +159,50 @@ export default function StoryDetail() {
                 if (
                     !storyData.published &&
                     !isAdminView &&
-                    !(isAuthor && storyData.status === "returned")
+                    !(isAuthor && (isReturned || isPending))
                 ) {
-                    navigate("/dashboard");
+                    navigate("/dashboard", { replace: true });
                     return;
                 }
 
                 setLikeCount(storyData.likeCount || (storyData.likes ? storyData.likes.length : 0));
                 setShareCount(storyData.shareCount || 0);
                 if (currentUser && storyData.likes && storyData.likes.includes(currentUser.uid)) setHasLiked(true);
-
-                if (storyData.authorId) {
-                    try {
-                        const userDoc = await getDoc(doc(db, "users", storyData.authorId));
-                        if (userDoc.exists()) {
-                            const userData = userDoc.data();
-                            setAuthorProfile(userData);
-                            const realCount = userData.trackers ? userData.trackers.length : (userData.trackersCount || 0);
-                            setTrackersCount(realCount);
-                            if (currentUser && userData.trackers && userData.trackers.includes(currentUser.uid)) setIsTracking(true);
-                        }
-                    } catch (err) { console.error(err); }
-                }
+                setStory({ id: storySnap.id, ...storyData });
+                setLoading(false);
 
                 const daysRef = collection(db, "stories", storyId, "days");
-                const q = query(daysRef, orderBy("dayNumber", "asc"));
-                const daysSnap = await getDocs(q);
-                const daysData = daysSnap.docs.map(d => d.data());
+                const daysQuery = query(daysRef, orderBy("dayNumber", "asc"));
 
-                setStory({ id: storySnap.id, ...storyData });
-                setDays(daysData);
+                const [authorResult, daysResult] = await Promise.allSettled([
+                    storyData.authorId ? getDoc(doc(db, "users", storyData.authorId)) : Promise.resolve(null),
+                    getDocs(daysQuery),
+                ]);
 
-                const allImages = [];
-                if (storyData.coverImage) allImages.push({ url: storyData.coverImage, caption: storyData.coverImageCaption || "Cover Photo", is360: false });
-                daysData.forEach(d => { if (d.imageUrl) allImages.push({ url: d.imageUrl, caption: d.imageCaption || `Day ${d.dayNumber}: ${d.title}`, is360: false }); });
-                if (storyData.gallery && Array.isArray(storyData.gallery)) {
-                    storyData.gallery.forEach(item => {
-                        if (typeof item === 'string') allImages.push({ url: item, caption: "", is360: false });
-                        else allImages.push({ url: item.url, caption: item.caption || "", is360: item.is360 || false });
-                    });
+                if (authorResult.status === "fulfilled" && authorResult.value?.exists?.()) {
+                    const userData = authorResult.value.data();
+                    setAuthorProfile(userData);
+                    const realCount = userData.trackers ? userData.trackers.length : (userData.trackersCount || 0);
+                    setTrackersCount(realCount);
+                    if (currentUser && userData.trackers && userData.trackers.includes(currentUser.uid)) setIsTracking(true);
                 }
-                setFullGallery(allImages);
 
-            } catch (err) { console.error("Error:", err); navigate("/dashboard"); } finally { setLoading(false); }
+                if (daysResult.status === "fulfilled") {
+                    const daysData = daysResult.value.docs.map(d => d.data());
+                    setDays(daysData);
+
+                    const allImages = [];
+                    if (storyData.coverImage) allImages.push({ url: storyData.coverImage, caption: storyData.coverImageCaption || "Cover Photo", is360: false });
+                    daysData.forEach(d => { if (d.imageUrl) allImages.push({ url: d.imageUrl, caption: d.imageCaption || `Day ${d.dayNumber}: ${d.title}`, is360: false }); });
+                    if (storyData.gallery && Array.isArray(storyData.gallery)) {
+                        storyData.gallery.forEach(item => {
+                            if (typeof item === 'string') allImages.push({ url: item, caption: "", is360: false });
+                            else allImages.push({ url: item.url, caption: item.caption || "", is360: item.is360 || false });
+                        });
+                    }
+                    setFullGallery(allImages);
+                }
+            } catch (err) { console.error("Error:", err); navigate("/dashboard", { replace: true }); } finally { setLoading(false); }
         }
         fetchStoryAndAuthor();
     }, [storyId, navigate, currentUser, isAdminView]);
@@ -232,9 +237,14 @@ export default function StoryDetail() {
                 type: 'track',
                 title: 'New Tracker',
                 message: `${currentUser.displayName || "A Scout"} started tracking you!`,
-                link: `/profile/${currentUser.uid}`
+                link: `/profile/${currentUser.uid}`,
+                actorId: currentUser.uid,
+                actorName: currentUser.displayName || "A Scout",
+                entityType: "profile",
+                entityId: currentUser.uid,
+                channel: "social",
             });
-            toast.success(`Tracking ${story.authorName}! (+10 XP)`);
+            toast.success(`Tracking ${story.authorName}! (+${result.xpGained || 0} XP)`);
         }
     };
 
@@ -256,10 +266,15 @@ export default function StoryDetail() {
                         type: 'like',
                         title: 'New Like',
                         message: `${currentUser.displayName || "A user"} liked "${story.title}"`,
-                        link: `/story/${story.id}`
+                        link: `/story/${story.id}`,
+                        actorId: currentUser.uid,
+                        actorName: currentUser.displayName || "A user",
+                        entityType: "story",
+                        entityId: story.id,
+                        channel: "social",
                     });
                 }
-                toast.success(`Liked! (+5 XP)`);
+                toast.success(`Liked! (+${result.xpGained || 0} XP)`);
             } else {
                 setHasLiked(false);
                 setLikeCount(prev => prev - 1);
@@ -285,8 +300,11 @@ export default function StoryDetail() {
             try {
                 await navigator.share(shareData);
                 if (currentUser) {
-                    const result = await trackShare(story.id, currentUser.uid);
-                    if (result.success) { toast.success("Thanks for sharing! (+20 XP)"); setShareCount(prev => prev + 1); }
+                    const result = await trackShare(story.id, currentUser.uid, story.authorId);
+                    if (result.success && result.shared) {
+                        toast.success(`Thanks for sharing! (+${result.xpGained || 0} XP)`);
+                        setShareCount(prev => prev + 1);
+                    }
                 }
             } catch (err) { console.log("Share canceled"); }
         } else {
@@ -294,8 +312,10 @@ export default function StoryDetail() {
                 await navigator.clipboard.writeText(window.location.href);
                 toast.success("Link copied to clipboard!");
                 if (currentUser) {
-                    const result = await trackShare(story.id, currentUser.uid);
-                    if (result.success) setShareCount(prev => prev + 1);
+                    const result = await trackShare(story.id, currentUser.uid, story.authorId);
+                    if (result.success && result.shared) {
+                        setShareCount(prev => prev + 1);
+                    }
                 }
             } catch (err) { toast.error("Failed to copy link"); }
         }
@@ -319,7 +339,12 @@ export default function StoryDetail() {
                     type: 'comment',
                     title: 'New Comment',
                     message: `${currentUser.displayName || "Someone"} commented on "${story.title}"`,
-                    link: `/story/${story.id}`
+                    link: `/story/${story.id}`,
+                    actorId: currentUser.uid,
+                    actorName: currentUser.displayName || "Someone",
+                    entityType: "story",
+                    entityId: story.id,
+                    channel: "social",
                 });
             }
             setNewComment("");
@@ -343,12 +368,34 @@ export default function StoryDetail() {
 
     const processApprove = async () => {
         setIsSubmittingReview(true);
-        try { await updateDoc(doc(db, "stories", storyId), { status: 'approved', published: true, feedback: {}, adminNotes: "" }); toast.success("Story Published Successfully!"); navigate("/admin"); } catch (error) { toast.error("Failed to approve"); } finally { setIsSubmittingReview(false); }
+        try {
+            await approveStoryReview({
+                storyId,
+                authorId: story.authorId,
+                title: story.title,
+            });
+            toast.success("Story Published Successfully!");
+            navigate("/admin");
+        } catch (error) {
+            toast.error("Failed to approve");
+        } finally { setIsSubmittingReview(false); }
     };
 
     const processReturn = async () => {
         setIsSubmittingReview(true);
-        try { await updateDoc(doc(db, "stories", storyId), { status: 'returned', published: false, feedback: feedback, adminNotes: "Please address the flagged issues." }); toast.success("Story returned to author"); navigate("/admin"); } catch (error) { toast.error("Failed to return story"); } finally { setIsSubmittingReview(false); }
+        try {
+            await returnStoryForRevision({
+                storyId,
+                authorId: story.authorId,
+                title: story.title,
+                existingFeedback: feedback,
+                generalNote: feedback.general || "",
+            });
+            toast.success("Story returned to author");
+            navigate("/admin");
+        } catch (error) {
+            toast.error("Failed to return story");
+        } finally { setIsSubmittingReview(false); }
     };
 
     const handleEditRedirect = () => { navigate(`/create-story?edit=${storyId}`); };
@@ -388,7 +435,7 @@ export default function StoryDetail() {
 
                 {/* HEADER */}
                 <div className="fixed top-6 left-0 right-0 px-4 md:px-8 z-[90] flex justify-between items-center pointer-events-none w-full max-w-[100vw] overflow-x-hidden">
-                    <button onClick={() => navigate(-1)} className="pointer-events-auto p-3 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 text-white hover:bg-black/40 hover:scale-105 transition-all shadow-lg group">
+                    <button onClick={() => goBackOrFallback(navigate, "/dashboard", location.state?.from)} className="pointer-events-auto p-3 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 text-white hover:bg-black/40 hover:scale-105 transition-all shadow-lg group">
                         <ArrowLeft size={24} className="group-hover:-translate-x-1 transition-transform" />
                     </button>
                     <div className="pointer-events-auto flex gap-2 md:gap-3">
@@ -431,7 +478,17 @@ export default function StoryDetail() {
                     {/* 1. VISUAL LAYER (Image) */}
                     <div className="absolute inset-0 z-0 pointer-events-none">
                         {story.coverImage ? (
-                            <motion.img initial={{ scale: 1.15 }} animate={{ scale: 1 }} transition={{ duration: 2, ease: "easeOut" }} src={story.coverImage} alt={story.title} className="w-full h-full object-cover" />
+                            <motion.div initial={{ scale: 1.05 }} animate={{ scale: 1 }} transition={{ duration: 1.2, ease: "easeOut" }} className="w-full h-full">
+                                <SmartImage
+                                    src={story.coverImage}
+                                    alt={story.title}
+                                    className="w-full h-full"
+                                    imgClassName="w-full h-full object-cover"
+                                    variant="hero"
+                                    loading="eager"
+                                    fetchPriority="high"
+                                />
+                            </motion.div>
                         ) : <div className="w-full h-full flex items-center justify-center text-white/20">No Cover</div>}
                     </div>
 
@@ -499,7 +556,7 @@ export default function StoryDetail() {
                         <div className="lg:col-span-4 space-y-6 md:space-y-8 h-fit lg:sticky lg:top-32 mt-6 lg:mt-32 order-1 lg:order-none">
                             <div className="bg-white dark:bg-[#151b2b] p-5 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] shadow-2xl border border-slate-100 dark:border-white/5 relative transition-colors duration-300">
                                 <div className="flex items-center gap-3 md:gap-5 mb-6 md:mb-8">
-                                    <div className="relative shrink-0"><div className="w-14 h-14 md:w-20 md:h-20 rounded-full p-1 bg-white dark:bg-[#151b2b] shadow-lg"><img src={authorProfile?.photoURL || `https://ui-avatars.com/api/?name=${story.authorName}`} className="w-full h-full rounded-full object-cover" alt="Author" /></div></div>
+                                    <div className="relative shrink-0"><div className="w-14 h-14 md:w-20 md:h-20 rounded-full p-1 bg-white dark:bg-[#151b2b] shadow-lg"><img src={getProfilePhotoUrl(authorProfile) || `https://ui-avatars.com/api/?name=${story.authorName}`} className="w-full h-full rounded-full object-cover" alt="Author" /></div></div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-start flex-wrap gap-2">
                                             <div><div className="text-[10px] md:text-xs font-bold text-orange-500 tracking-widest uppercase mb-1">{authorProfile?.currentRank?.name || authorProfile?.badge || "SCOUT"}</div><h3 className="text-lg md:text-2xl font-black text-slate-900 dark:text-white leading-none truncate pr-2 max-w-[150px] md:max-w-none">{story.authorName}</h3></div>
@@ -546,7 +603,12 @@ export default function StoryDetail() {
                                         <div className="mb-4 md:mb-6"><span className="text-orange-500 font-bold text-xs md:text-sm tracking-widest uppercase mb-1 md:mb-2 block">Day {day.dayNumber}</span><h2 className="text-xl md:text-3xl font-black text-slate-900 dark:text-white leading-tight break-words">{day.title}</h2></div>
                                         {day.imageUrl && (
                                             <div className="w-full aspect-[16/9] rounded-2xl md:rounded-3xl overflow-hidden mb-6 md:mb-8 shadow-xl relative cursor-zoom-in group/img" onClick={() => { const idx = fullGallery.findIndex(img => img.url === day.imageUrl); if (idx !== -1) setLightboxIndex(idx); }}>
-                                                <img src={day.imageUrl} alt="Day" className="w-full h-full object-cover transition-transform duration-700 group-hover/img:scale-105" />
+                                                <SmartImage
+                                                    src={day.imageUrl}
+                                                    alt={`Day ${day.dayNumber}`}
+                                                    className="w-full h-full"
+                                                    imgClassName="w-full h-full object-cover group-hover/img:scale-105"
+                                                />
                                                 {day.imageCaption && (<div className="absolute bottom-3 left-4 md:bottom-4 md:left-6 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full text-white text-[10px] md:text-xs font-medium border border-white/10 max-w-[80%] truncate">{day.imageCaption}</div>)}
                                             </div>
                                         )}
@@ -588,7 +650,12 @@ export default function StoryDetail() {
                                         onClick={() => setLightboxIndex(idx)}
                                         className="relative aspect-square rounded-xl overflow-hidden cursor-zoom-in shadow-lg group border border-slate-200 dark:border-white/10"
                                     >
-                                        <img src={img.url} alt="Gallery" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                                        <SmartImage
+                                            src={img.url}
+                                            alt={img.caption || "Gallery"}
+                                            className="w-full h-full"
+                                            imgClassName="w-full h-full object-cover group-hover:scale-110"
+                                        />
 
                                         {/* 360 Badge */}
                                         {img.is360 && (

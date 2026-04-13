@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom"; 
+import { useNavigate, useSearchParams } from "react-router-dom"; 
 import { 
   collection, query, getDocs, doc, orderBy, deleteDoc, setDoc, getDoc, onSnapshot, updateDoc 
 } from "firebase/firestore";
@@ -21,7 +21,9 @@ import * as LucideIcons from "lucide-react";
 
 import toast, { Toaster } from "react-hot-toast";
 import { formatDistanceToNow } from 'date-fns';
-import { sendNotification } from "../services/notificationService";
+import { returnStoryForRevision } from "../services/reviewService";
+import { isAuthorizedAdmin } from "../utils/admin";
+import { deleteStoryWithAssets } from "../services/storyCleanupService";
 
 // --- CONSTANTS ---
 const SCROLLBAR_STYLES = `
@@ -65,9 +67,27 @@ const COLOR_PALETTE = [
 ];
 
 export default function AdminPanel() {
-  const [activeTab, setActiveTab] = useState("moderation");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "moderation");
   const [isDarkMode, setIsDarkMode] = useState(true); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
+
+  useEffect(() => {
+    const nextTab = searchParams.get("tab") || "moderation";
+    if (nextTab !== activeTab) {
+      setActiveTab(nextTab);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (activeTab === "moderation") nextParams.delete("tab");
+    else nextParams.set("tab", activeTab);
+
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [activeTab, searchParams, setSearchParams]);
 
   const handleLogout = async () => {
     if(window.confirm("Are you sure you want to logout?")) {
@@ -188,11 +208,12 @@ function SidebarItem({ icon, label, active, onClick, isDark }) {
 }
 
 function StoryModeration({ isDark }) {
+    const [searchParams, setSearchParams] = useSearchParams();
     const [allStories, setAllStories] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [filterStatus, setFilterStatus] = useState("pending");
-    const [searchQuery, setSearchQuery] = useState("");
-    const [sortOrder, setSortOrder] = useState("desc"); 
+    const [filterStatus, setFilterStatus] = useState(searchParams.get("status") || "pending");
+    const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
+    const [sortOrder, setSortOrder] = useState(searchParams.get("sort") || "desc"); 
     const navigate = useNavigate();
 
     const [showReturnModal, setShowReturnModal] = useState(false);
@@ -200,9 +221,44 @@ function StoryModeration({ isDark }) {
     const [returnReason, setReturnReason] = useState(""); 
     const [isReturning, setIsReturning] = useState(false); 
 
+    const getStoryStatus = (story) => {
+        if (story?.status) return story.status;
+        return story?.published ? "pending" : "draft";
+    };
+
+    const isPendingStory = (story) => getStoryStatus(story) === "pending";
+    const isApprovedStory = (story) => getStoryStatus(story) === "approved";
+    const isReturnedStory = (story) => getStoryStatus(story) === "returned";
+
+    useEffect(() => {
+        const nextStatus = searchParams.get("status") || "pending";
+        const nextQuery = searchParams.get("q") || "";
+        const nextSort = searchParams.get("sort") || "desc";
+
+        if (nextStatus !== filterStatus) setFilterStatus(nextStatus);
+        if (nextQuery !== searchQuery) setSearchQuery(nextQuery);
+        if (nextSort !== sortOrder) setSortOrder(nextSort);
+    }, [searchParams]);
+
+    useEffect(() => {
+        const nextParams = new URLSearchParams(searchParams);
+        if (filterStatus === "pending") nextParams.delete("status");
+        else nextParams.set("status", filterStatus);
+
+        if (searchQuery.trim()) nextParams.set("q", searchQuery);
+        else nextParams.delete("q");
+
+        if (sortOrder === "desc") nextParams.delete("sort");
+        else nextParams.set("sort", sortOrder);
+
+        if (nextParams.toString() !== searchParams.toString()) {
+            setSearchParams(nextParams, { replace: true });
+        }
+    }, [filterStatus, searchQuery, sortOrder, searchParams, setSearchParams]);
+
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (!user || user.email !== "sjsubratajana@gmail.com") {
+            if (!isAuthorizedAdmin(user)) {
                 setLoading(false);
                 return; 
             }
@@ -213,8 +269,8 @@ function StoryModeration({ isDark }) {
                 const fetched = snap.docs.map((d) => ({ 
                     id: d.id, 
                     ...d.data(),
-                    status: d.data().status || (d.data().published ? 'pending' : 'draft') 
-                }));
+                    status: getStoryStatus(d.data())
+                })).filter((story) => getStoryStatus(story) !== "draft");
                 setAllStories(fetched);
             } catch (error) {
                 console.error("Error fetching stories:", error);
@@ -232,7 +288,7 @@ function StoryModeration({ isDark }) {
         if (filterStatus !== 'all') {
             stories = stories.filter(story => {
                 if (filterStatus === 'pending') {
-                    return story.published && story.status !== 'approved' && story.status !== 'returned';
+                    return isPendingStory(story);
                 }
                 return story.status === filterStatus;
             });
@@ -250,10 +306,11 @@ function StoryModeration({ isDark }) {
     }, [allStories, filterStatus, searchQuery]);
 
     const stats = useMemo(() => {
-        const pending = allStories.filter(s => s.published && s.status !== 'approved' && s.status !== 'returned').length;
-        const approved = allStories.filter(s => s.status === 'approved').length;
+        const pending = allStories.filter(isPendingStory).length;
+        const approved = allStories.filter(isApprovedStory).length;
+        const returned = allStories.filter(isReturnedStory).length;
         const total = allStories.length;
-        return { pending, approved, total };
+        return { pending, approved, returned, total };
     }, [allStories]);
 
     const handleReview = (story) => {
@@ -263,7 +320,7 @@ function StoryModeration({ isDark }) {
     const handleDelete = async (id) => {
         if(!window.confirm("Permanently delete this story?")) return;
         try {
-            await deleteDoc(doc(db, "stories", id));
+            await deleteStoryWithAssets(id);
             setAllStories(prev => prev.filter(s => s.id !== id));
             toast.success("Story deleted");
         } catch (e) { toast.error("Failed to delete"); }
@@ -285,27 +342,20 @@ function StoryModeration({ isDark }) {
 
         setIsReturning(true);
         try {
-            const storyRef = doc(db, "stories", storyToReturn.id);
-            const finalFeedback = { ...existingFeedback };
-            if (note) finalFeedback.general = note; 
-
-            await updateDoc(storyRef, {
-                status: "returned",
-                published: false, 
-                adminNotes: note || "Please check flagged items.", 
-                feedback: finalFeedback
-            });
-
-            await sendNotification({
-                recipientId: storyToReturn.authorId,
-                type: 'alert',
-                title: 'Action Required: Story Returned',
-                message: `Admin has requested changes on "${storyToReturn.title}". Reason: ${note || "See flagged items."}`,
-                link: `/create-story?edit=${storyToReturn.id}`
+            const { feedback: finalFeedback, summary } = await returnStoryForRevision({
+                storyId: storyToReturn.id,
+                authorId: storyToReturn.authorId,
+                title: storyToReturn.title,
+                existingFeedback,
+                generalNote: note,
             });
 
             setAllStories(prev => prev.map(s => s.id === storyToReturn.id ? { 
-                ...s, status: "returned", published: false, adminNotes: note, feedback: finalFeedback
+                ...s,
+                status: "returned",
+                published: false,
+                adminNotes: summary,
+                feedback: finalFeedback
             } : s));
             
             toast.success("Story returned to author!");
@@ -388,8 +438,8 @@ function StoryModeration({ isDark }) {
             <div className={`p-1.5 rounded-xl flex flex-wrap gap-2 ${isDark ? 'bg-black/20 border border-white/5' : 'bg-slate-100 border border-slate-200'}`}>
                 <StatusTab id="pending" label="Pending" icon={Clock} count={stats.pending} color="bg-blue-600 text-white" />
                 <StatusTab id="approved" label="Approved" icon={CheckCircle} count={stats.approved} color="bg-green-600 text-white" />
-                <StatusTab id="returned" label="Returned" icon={RotateCcw} color="bg-orange-600 text-white" />
-                <StatusTab id="all" label="All" icon={List} color="bg-slate-600 text-white" />
+                <StatusTab id="returned" label="Returned" icon={RotateCcw} count={stats.returned} color="bg-orange-600 text-white" />
+                <StatusTab id="all" label="All" icon={List} count={stats.total} color="bg-slate-600 text-white" />
             </div>
 
             <div className={`rounded-2xl border overflow-hidden shadow-2xl ${cardClass}`}>
@@ -451,17 +501,17 @@ function StoryModeration({ isDark }) {
                                 <td className="p-4">
                                     <div className="flex flex-col items-start gap-1">
                                         <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide inline-flex items-center gap-1.5
-                                            ${story.status === 'approved' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
-                                                story.status === 'returned' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 
-                                                story.published ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
+                                            ${getStoryStatus(story) === 'approved' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
+                                                getStoryStatus(story) === 'returned' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 
+                                                getStoryStatus(story) === 'pending' ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
                                                 'bg-slate-500/10 text-slate-500 border border-slate-500/20'}
                                             `}>
-                                                {story.status === 'approved' && <CheckCircle size={12}/>}
-                                                {story.status === 'returned' && <RotateCcw size={12}/>}
-                                                {story.published && story.status !== 'approved' && story.status !== 'returned' && <Clock size={12}/>}
-                                                {story.status || (story.published ? "Pending" : "Draft")}
+                                                {getStoryStatus(story) === 'approved' && <CheckCircle size={12}/>}
+                                                {getStoryStatus(story) === 'returned' && <RotateCcw size={12}/>}
+                                                {getStoryStatus(story) === 'pending' && <Clock size={12}/>}
+                                                {getStoryStatus(story)}
                                         </span>
-                                        {story.published && story.status !== 'approved' && story.status !== 'returned' && (
+                                        {getStoryStatus(story) === 'pending' && (
                                             <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1 ml-1">
                                                 ⏳ Waited: {formatTimeAgo(story.updatedAt)}
                                             </span>
@@ -476,7 +526,7 @@ function StoryModeration({ isDark }) {
                                         >
                                             <Eye size={14}/> Review
                                         </button>
-                                        {story.status !== 'approved' && story.status !== 'returned' && (
+                                        {getStoryStatus(story) !== 'approved' && getStoryStatus(story) !== 'returned' && (
                                             <button 
                                                 onClick={() => openReturnModal(story)}
                                                 className="px-3 py-2 bg-orange-500/10 text-orange-500 border border-orange-500/20 rounded-lg hover:bg-orange-500/20 transition-all font-bold"
