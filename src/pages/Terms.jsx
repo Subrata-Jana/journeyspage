@@ -44,9 +44,25 @@ const sections = [
     ],
   },
   {
+    title: "Publishing Consent And Copyright",
+    body:
+      "When you submit a story for review, you must confirm that the story, images, captions, videos, links, and other materials belong to you or are used with permission. JourneysPage may store this confirmation with the story record.",
+    bullets: [
+      "Do not submit copied text, downloaded images, screenshots, maps, thumbnails, music, or other copyrighted material without permission.",
+      "Credit alone does not guarantee that you have permission to publish someone else's work.",
+      "If copyright or ownership concerns are found, the content may be removed or restricted.",
+      "Repeated or serious violations may lead to publishing limits, suspension, or account deactivation.",
+    ],
+  },
+  {
     title: "Review, Moderation, And Removal",
     body:
       "JourneysPage may review submitted stories before they become public. Content can be returned for changes, approved, unpublished, restricted, or removed if it harms trust, safety, quality, or platform operations.",
+  },
+  {
+    title: "Account Restrictions",
+    body:
+      "JourneysPage may restrict, suspend, or deactivate accounts that violate these terms, the Community Guidelines, the Copyright Policy, or platform safety expectations. Severe violations may be acted on immediately.",
   },
   {
     title: "Community Features",
@@ -83,12 +99,13 @@ export default function Terms() {
       asidePoints={[
         "Creators own their stories but allow JourneysPage to display them.",
         "Public stories may be moderated for quality and safety.",
+        "Content ownership consent is required before publishing.",
         "Travel decisions should be verified independently.",
       ]}
       ctaTitle="Ready to share responsibly?"
       ctaText="Start with a draft, add useful details, and submit your journey for review when it is ready for readers."
       ctaPrimary={{ label: "Create A Story", to: "/register" }}
-      ctaSecondary={{ label: "Read Privacy Policy", to: "/privacy" }}
+      ctaSecondary={{ label: "Read Guidelines", to: "/guidelines" }}
     />
   );
 }

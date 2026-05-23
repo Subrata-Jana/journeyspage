@@ -12,6 +12,8 @@ import About from "./pages/About";
 import Contact from "./pages/Contact";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
+import CommunityGuidelines from "./pages/CommunityGuidelines";
+import CopyrightPolicy from "./pages/CopyrightPolicy";
 
 import Dashboard from "./pages/Dashboard";
 import CreateStory from "./pages/CreateStory";
@@ -51,6 +53,16 @@ const publicPageSeo = {
     title: "Terms Of Service | JourneysPage",
     description:
       "Review the terms for using JourneysPage, publishing travel stories, account access, moderation, and community features.",
+  },
+  "/guidelines": {
+    title: "Community Guidelines | JourneysPage",
+    description:
+      "Review JourneysPage creator rules, publishing standards, content safety expectations, and do-and-don't guidance.",
+  },
+  "/copyright": {
+    title: "Copyright Policy | JourneysPage",
+    description:
+      "Review JourneysPage copyright rules, creator ownership requirements, infringement reporting, and content removal process.",
   },
   "/login": {
     title: "Login | JourneysPage",
@@ -107,6 +119,8 @@ function Layout() {
           <Route path="/contact" element={<Contact />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
+          <Route path="/guidelines" element={<CommunityGuidelines />} />
+          <Route path="/copyright" element={<CopyrightPolicy />} />
           <Route path="/story/:storyId" element={<StoryDetail />} />
 
           {/* PROTECTED APP ROUTES */}

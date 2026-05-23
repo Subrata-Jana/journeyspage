@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
+import { Link, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import {
   collection,
   addDoc,
@@ -43,6 +43,10 @@ const getColorHex = (name) => {
   return colors[name?.toLowerCase()] || '#94a3b8';
 };
 
+const CONTENT_CONSENT_VERSION = "journeyspage-content-consent-v1";
+const CONTENT_CONSENT_STATEMENT =
+  "I confirm that I own this story and media, or have permission to publish them, and I accept that infringing or unsafe content may be removed and my account may be restricted or deactivated.";
+
 export default function CreateStory() {
   const { user, userProfile } = useAuth();
   const navigate = useNavigate();
@@ -55,6 +59,7 @@ export default function CreateStory() {
   const [processingStatus, setProcessingStatus] = useState(null); 
   const [showValidationModal, setShowValidationModal] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
+  const [contentConsentAccepted, setContentConsentAccepted] = useState(false);
 
   // ⚡ TRACK MODIFIED FIELDS (The "Amber" State)
   const [modifiedFields, setModifiedFields] = useState({});
@@ -331,6 +336,9 @@ export default function CreateStory() {
     // 1. Validation for Publishing
     if (publish) {
         const errors = validateForPublish();
+        if (!contentConsentAccepted) {
+            errors.push("Content ownership and copyright consent");
+        }
         if (errors.length > 0) {
             setValidationErrors(errors);
             setShowValidationModal(true);
@@ -420,6 +428,17 @@ export default function CreateStory() {
         modifiedFlags: targetStatus === 'pending' ? {} : modifiedFields, 
         feedback: updatedFeedback 
       };
+
+      if (targetStatus === 'pending') {
+          updatePayload.contentConsent = {
+              accepted: true,
+              version: CONTENT_CONSENT_VERSION,
+              statement: CONTENT_CONSENT_STATEMENT,
+              acceptedAt: serverTimestamp(),
+              acceptedBy: user.uid,
+              acceptedByEmail: user.email || "",
+          };
+      }
 
       if (publish || isReturned) {
           updatePayload.revisionCount = increment(1);
@@ -761,14 +780,39 @@ export default function CreateStory() {
           <div className="h-4" />
 
           {storyStatus !== "pending" && storyStatus !== "approved" && (
-            <div className="grid grid-cols-2 gap-4 sticky bottom-4 z-20">
-              <button onClick={() => submitStory(false)} disabled={isSubmitting} className="py-4 rounded-xl bg-white dark:bg-[#1A1F2E] text-slate-600 dark:text-white font-medium border border-slate-200 dark:border-white/10 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 flex items-center justify-center gap-2 shadow-lg transition-colors">
-                {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18} />} Save Draft
-              </button>
-              <button onClick={() => submitStory(true)} disabled={isSubmitting} className={`py-4 rounded-xl text-white font-bold hover:shadow-orange-500/20 hover:scale-[1.02] flex items-center justify-center gap-2 shadow-lg ${isReturned ? 'bg-red-600 hover:bg-red-500 shadow-red-500/20' : 'bg-gradient-to-r from-orange-600 to-orange-500'}`}>
-                {isSubmitting ? <Loader2 className="animate-spin" /> : <Send size={18} />}
-                {isReturned ? "Submit Revisions" : "Publish Story"}
-              </button>
+            <div className="sticky bottom-4 z-20 space-y-3">
+              <label className="flex items-start gap-3 rounded-2xl border border-orange-200 bg-white/95 p-4 shadow-xl backdrop-blur-xl dark:border-orange-500/25 dark:bg-[#111625]/95">
+                <input
+                  type="checkbox"
+                  checked={contentConsentAccepted}
+                  onChange={(event) => setContentConsentAccepted(event.target.checked)}
+                  className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                />
+                <span className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                  I confirm that this story, images, captions, video links, and other materials belong to me or I have permission to use them. I accept the{" "}
+                  <Link to="/guidelines" className="font-bold text-orange-600 hover:underline dark:text-orange-400">
+                    Community Guidelines
+                  </Link>
+                  ,{" "}
+                  <Link to="/copyright" className="font-bold text-orange-600 hover:underline dark:text-orange-400">
+                    Copyright Policy
+                  </Link>
+                  , and{" "}
+                  <Link to="/terms" className="font-bold text-orange-600 hover:underline dark:text-orange-400">
+                    Terms
+                  </Link>
+                  . I understand that violations may lead to story removal, account restrictions, or deactivation.
+                </span>
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <button onClick={() => submitStory(false)} disabled={isSubmitting} className="py-4 rounded-xl bg-white dark:bg-[#1A1F2E] text-slate-600 dark:text-white font-medium border border-slate-200 dark:border-white/10 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 flex items-center justify-center gap-2 shadow-lg transition-colors">
+                  {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18} />} Save Draft
+                </button>
+                <button onClick={() => submitStory(true)} disabled={isSubmitting} className={`py-4 rounded-xl text-white font-bold hover:shadow-orange-500/20 hover:scale-[1.02] flex items-center justify-center gap-2 shadow-lg ${isReturned ? 'bg-red-600 hover:bg-red-500 shadow-red-500/20' : 'bg-gradient-to-r from-orange-600 to-orange-500'} ${!contentConsentAccepted ? 'opacity-80' : ''}`}>
+                  {isSubmitting ? <Loader2 className="animate-spin" /> : <Send size={18} />}
+                  {isReturned ? "Submit Revisions" : "Publish Story"}
+                </button>
+              </div>
             </div>
           )}
 

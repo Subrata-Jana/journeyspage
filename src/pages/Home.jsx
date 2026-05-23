@@ -338,6 +338,24 @@ function SectionHeader({ eyebrow, title, description, actionLabel, onAction }) {
   );
 }
 
+function LiveIcon({ icon: Icon, size = 18, className = "", delay = 0 }) {
+  return (
+    <motion.span
+      className={`inline-flex shrink-0 ${className}`}
+      animate={{ y: [0, -2, 0], rotate: [0, -4, 0, 4, 0], scale: [1, 1.06, 1] }}
+      transition={{
+        duration: 3.2,
+        repeat: Infinity,
+        ease: "easeInOut",
+        delay,
+      }}
+      whileHover={{ scale: 1.18, rotate: 8 }}
+    >
+      <Icon size={size} />
+    </motion.span>
+  );
+}
+
 function DiscoveryPills({ categories, activeCategory, onSelect }) {
   return (
     <div className="flex gap-3 overflow-x-auto pb-1">
@@ -354,7 +372,7 @@ function DiscoveryPills({ categories, activeCategory, onSelect }) {
                 : "bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-orange-500/30 hover:text-orange-500"
             }`}
           >
-            <Icon size={16} />
+            <LiveIcon icon={Icon} size={16} />
             {category}
           </button>
         );
@@ -384,7 +402,7 @@ function HomeFallback({ onWrite, isLoggedIn, hasError = false }) {
           <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-8 items-center">
             <div className="space-y-7">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-orange-500/15 border border-orange-400/25 backdrop-blur-md text-orange-200 text-xs font-bold uppercase tracking-[0.25em]">
-                <Sparkles size={14} className="text-orange-300" />
+                <LiveIcon icon={Sparkles} size={14} className="text-orange-300" />
                 {hasError ? "Connection Needed" : "Homepage Standby"}
               </div>
 
@@ -433,7 +451,7 @@ function HomeFallback({ onWrite, isLoggedIn, hasError = false }) {
                     key={item.label}
                     className="rounded-2xl border border-white/10 bg-black/20 backdrop-blur-md p-4"
                   >
-                    <item.icon size={18} className="text-orange-300 mb-3" />
+                    <LiveIcon icon={item.icon} size={18} className="text-orange-300 mb-3" />
                     <div className="text-white font-bold text-sm">{item.label}</div>
                     <div className="text-slate-300/80 text-xs leading-relaxed mt-1">
                       {item.text}
@@ -520,7 +538,7 @@ function HeroSection({ story, onExplore, onWrite, onOpenStory, onShuffle }) {
           >
             <div className="space-y-6 max-w-4xl">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-orange-500/15 border border-orange-400/25 backdrop-blur-md text-orange-200 text-xs font-bold uppercase tracking-[0.25em]">
-                <Sparkles size={14} className="text-orange-300" />
+                <LiveIcon icon={Sparkles} size={14} className="text-orange-300" />
                 Featured Approved Journey
               </div>
 
@@ -535,17 +553,17 @@ function HeroSection({ story, onExplore, onWrite, onOpenStory, onShuffle }) {
 
               <div className="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm text-slate-100/90">
                 <span className="flex items-center gap-2">
-                  <MapPin size={16} className="text-orange-300" />
+                  <LiveIcon icon={MapPin} size={16} className="text-orange-300" />
                   {getStoryLocationLabel(story)}
                 </span>
                 {getStoryCountry(story) && (
                   <span className="flex items-center gap-2">
-                    <Globe2 size={16} className="text-sky-300" />
+                    <LiveIcon icon={Globe2} size={16} className="text-sky-300" />
                     {getStoryCountry(story)}
                   </span>
                 )}
                 <span className="flex items-center gap-2">
-                  <BadgeCheck size={16} className="text-emerald-300" />
+                  <LiveIcon icon={BadgeCheck} size={16} className="text-emerald-300" />
                   {formatStoryDate(story)}
                 </span>
               </div>
@@ -555,13 +573,13 @@ function HeroSection({ story, onExplore, onWrite, onOpenStory, onShuffle }) {
                   onClick={() => onOpenStory(story.id)}
                   className="px-6 py-3.5 rounded-full bg-white text-slate-950 hover:bg-orange-500 hover:text-white font-bold text-sm md:text-base transition-all shadow-xl flex items-center gap-3 hover:scale-[1.02]"
                 >
-                  Read This Journey <ArrowRight size={18} />
+                  Read This Journey <LiveIcon icon={ArrowRight} size={18} />
                 </button>
                 <button
                   onClick={onShuffle}
                   className="px-6 py-3.5 rounded-full border border-white/15 bg-black/18 text-white hover:bg-white/10 backdrop-blur-md font-bold text-sm md:text-base transition-all flex items-center gap-3"
                 >
-                  Show Another <RefreshCw size={16} />
+                  Show Another <LiveIcon icon={RefreshCw} size={16} />
                 </button>
                 <button
                   onClick={onWrite}
@@ -684,7 +702,7 @@ function ProofStrip({ stats }) {
             key={card.label}
             className="rounded-[1.75rem] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#111625]/85 backdrop-blur-xl p-5 shadow-sm"
           >
-            <card.icon size={18} className={`${card.accent} mb-4`} />
+            <LiveIcon icon={card.icon} size={18} className={`${card.accent} mb-4`} delay={0.15} />
             <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">
               {card.value}
             </div>
@@ -731,7 +749,7 @@ function SpotlightCard({ story, onOpen, fromState }) {
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             <span className="flex items-center gap-1.5">
-              <MapPin size={13} className="text-orange-500" />
+              <LiveIcon icon={MapPin} size={13} className="text-orange-500" />
               {getStoryLocationLabel(story)}
             </span>
             <span>{formatStoryDate(story)}</span>
@@ -789,7 +807,7 @@ function SpotlightCard({ story, onOpen, fromState }) {
             onClick={() => onOpen(story.id, fromState)}
             className="px-5 py-3 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-950 font-bold text-sm hover:bg-orange-500 hover:text-white transition-colors flex items-center gap-2 shrink-0"
           >
-            Open Story <ArrowRight size={16} />
+            Open Story <LiveIcon icon={ArrowRight} size={16} />
           </button>
         </div>
       </div>
@@ -823,7 +841,7 @@ function CompactStoryCard({ story, onOpen, fromState, eyebrow = "Journey" }) {
         <div className="p-5 space-y-4">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-              <MapPin size={12} className="text-orange-500" />
+              <LiveIcon icon={MapPin} size={12} className="text-orange-500" />
               {getStoryLocationLabel(story)}
             </div>
             <h3 className="text-xl font-black text-slate-900 dark:text-white leading-tight line-clamp-2 group-hover:text-orange-500 transition-colors">
@@ -902,7 +920,7 @@ function WhyJourneysPage({ onCreate }) {
             onClick={onCreate}
             className="px-6 py-3.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-950 font-bold text-sm hover:bg-orange-500 hover:text-white transition-colors flex items-center gap-2"
           >
-            Start Your First Journey <ArrowRight size={16} />
+            Start Your First Journey <LiveIcon icon={ArrowRight} size={16} />
           </button>
         </div>
 
@@ -912,7 +930,7 @@ function WhyJourneysPage({ onCreate }) {
               key={feature.title}
               className="rounded-[1.75rem] border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111625] p-6 shadow-sm"
             >
-              <feature.icon size={20} className="text-orange-500 mb-4" />
+              <LiveIcon icon={feature.icon} size={20} className="text-orange-500 mb-4" delay={0.2} />
               <h3 className="text-xl font-black text-slate-900 dark:text-white mb-3">
                 {feature.title}
               </h3>
@@ -1176,7 +1194,7 @@ export default function Home() {
           <div className="rounded-[2rem] border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111625] p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-11 h-11 rounded-2xl bg-orange-500/10 text-orange-500 flex items-center justify-center">
-                <Flame size={20} />
+                <LiveIcon icon={Flame} size={20} />
               </div>
               <div>
                 <div className="text-[11px] uppercase tracking-[0.26em] font-bold text-orange-500">
@@ -1203,7 +1221,7 @@ export default function Home() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                        <MapPin size={12} className="text-orange-500" />
+                        <LiveIcon icon={MapPin} size={12} className="text-orange-500" />
                         {getStoryLocationLabel(story)}
                       </div>
                       <div className="text-lg font-black text-slate-900 dark:text-white line-clamp-1">
@@ -1225,7 +1243,7 @@ export default function Home() {
           <div className="rounded-[2rem] border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111625] p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-11 h-11 rounded-2xl bg-sky-500/10 text-sky-500 flex items-center justify-center">
-                <TrendingUp size={20} />
+                <LiveIcon icon={TrendingUp} size={20} />
               </div>
               <div>
                 <div className="text-[11px] uppercase tracking-[0.26em] font-bold text-sky-500">

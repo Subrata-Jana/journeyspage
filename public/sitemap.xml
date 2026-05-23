@@ -20,4 +20,12 @@
     <loc>https://journeyspage-c558b.web.app/terms</loc>
     <priority>0.5</priority>
   </url>
+  <url>
+    <loc>https://journeyspage-c558b.web.app/guidelines</loc>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://journeyspage-c558b.web.app/copyright</loc>
+    <priority>0.5</priority>
+  </url>
 </urlset>

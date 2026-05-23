@@ -96,6 +96,8 @@ export default function Footer() {
             <FooterColumn 
               title="Legal" 
               links={[
+                { label: "Community Guidelines", to: "/guidelines" },
+                { label: "Copyright Policy", to: "/copyright" },
                 { label: "Privacy Policy", to: "/privacy" },
                 { label: "Terms Of Service", to: "/terms" }
               ]} 
