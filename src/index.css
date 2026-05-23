@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Tiro+Bangla:ital@0;1&display=swap");
 @import "tailwindcss";
 
 /* 👇 THIS LINE FIXES THE DARK MODE TOGGLE */
@@ -61,6 +62,30 @@
   li,
   blockquote {
     overflow-wrap: anywhere;
+  }
+}
+
+.font-bengali-title {
+  font-family:
+    "Tiro Bangla",
+    "Noto Serif Bengali",
+    "Noto Sans Bengali",
+    "Nirmala UI",
+    "Vrinda",
+    serif;
+  font-weight: 700;
+  font-synthesis-weight: auto;
+  letter-spacing: 0;
+  line-height: 1.12;
+}
+
+.story-title-bengali {
+  line-height: 1.12;
+}
+
+@media (min-width: 768px) {
+  .story-title-bengali {
+    line-height: 1.06;
   }
 }
 

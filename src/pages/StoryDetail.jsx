@@ -43,6 +43,8 @@ const getColorHex = (name) => {
     return colors[name?.toLowerCase()] || '#94a3b8';
 };
 
+const hasBengaliText = (value = "") => /[\u0980-\u09FF]/.test(value);
+
 export default function StoryDetail() {
     const { userProfile } = useAuth();
     const { storyId } = useParams();
@@ -136,6 +138,7 @@ export default function StoryDetail() {
 
     const isResubmission = story?.status === 'pending' && story?.feedback && Object.keys(story.feedback).length > 0;
     const isAdminView = canReviewStoryAsStaff(currentUser, userProfile, story);
+    const isBengaliTitle = hasBengaliText(story?.title);
 
     useEffect(() => {
         if (!storyId) return;
@@ -553,7 +556,7 @@ export default function StoryDetail() {
                                 </div>
                             </ReviewSection>
 
-                            <h1 className="text-3xl md:text-6xl lg:text-8xl font-black text-white leading-[1.1] md:leading-[0.9] tracking-tight drop-shadow-2xl break-words max-w-full">
+                            <h1 className={`text-3xl md:text-6xl lg:text-8xl font-black text-white leading-[1.1] md:leading-[0.9] tracking-tight drop-shadow-2xl break-words max-w-full ${isBengaliTitle ? "font-bengali-title story-title-bengali" : ""}`}>
                                 {story.title}
                             </h1>
 
