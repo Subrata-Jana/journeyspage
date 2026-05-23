@@ -8,6 +8,7 @@
   html {
     font-family:
       Inter,
+      "Tiro Bangla",
       ui-sans-serif,
       system-ui,
       -apple-system,
@@ -111,6 +112,22 @@
 
 /* Animations */
 @theme {
+  --font-sans:
+    Inter,
+    "Tiro Bangla",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Noto Sans Bengali",
+    "Noto Sans",
+    "Nirmala UI",
+    "Vrinda",
+    "Hind Siliguri",
+    Arial,
+    sans-serif;
+
   --animate-spin-slow: spin 8s linear infinite;
   
   @keyframes fadeIn {
