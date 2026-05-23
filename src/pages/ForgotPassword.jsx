@@ -9,6 +9,39 @@ import Input from "../components/ui/Input";
 import Button from "../components/ui/Button";
 import AuthCard from "../components/ui/AuthCard";
 
+function hasApiKeyError(message = "") {
+  const normalized = message.toLowerCase();
+  return normalized.includes("api key") || normalized.includes("api_key");
+}
+
+function getResetPasswordErrorMessage(code, message = "") {
+  if (hasApiKeyError(message)) {
+    return "Firebase API key is not valid for this app.";
+  }
+
+  switch (code) {
+    case "auth/invalid-email":
+    case "auth/missing-email":
+      return "Please enter a valid email address.";
+    case "auth/user-not-found":
+      return "No account found with this email.";
+    case "auth/too-many-requests":
+      return "Too many reset attempts. Please try again later.";
+    case "auth/network-request-failed":
+      return "Network error. Please check your connection and try again.";
+    case "auth/operation-not-allowed":
+    case "auth/configuration-not-found":
+      return "Password reset is not enabled in Firebase Authentication.";
+    case "auth/unauthorized-continue-uri":
+      return "This app domain is not authorized for password reset emails.";
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
+      return "Firebase API key is not valid for this app.";
+    default:
+      return "Unable to send reset email. Try again.";
+  }
+}
+
 export default function ForgotPassword() {
   const { resetPassword } = useAuth();
 
@@ -18,24 +51,22 @@ export default function ForgotPassword() {
   async function handleSubmit(e) {
     e.preventDefault();
 
-    if (!email.includes("@")) {
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail.includes("@")) {
       toast.error("Please enter a valid email address.");
       return;
     }
 
     try {
       setLoading(true);
-      await resetPassword(email);
+      await resetPassword(trimmedEmail);
 
       toast.success("Password reset link sent! Check your inbox.");
       setEmail("");
     } catch (err) {
-      const msg =
-        err.code === "auth/user-not-found"
-          ? "No account found with this email."
-          : "Unable to send reset email. Try again.";
-
-      toast.error(msg);
+      console.error("Password reset failed", err);
+      toast.error(getResetPasswordErrorMessage(err.code, err.message));
     } finally {
       setLoading(false);
     }
@@ -77,7 +108,7 @@ export default function ForgotPassword() {
               placeholder="Enter your email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              autoComplete="off"
+              autoComplete="email"
               required
             />
 

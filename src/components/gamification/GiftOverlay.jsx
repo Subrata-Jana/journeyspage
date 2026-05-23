@@ -12,6 +12,9 @@ const RenderIcon = ({ iconName, size = 48, className }) => {
   return <Icon size={size} className={className} />;
 };
 
+const getSenderName = (gift) =>
+  gift?.senderName || gift?.actorName || gift?.fromName || "A traveler";
+
 export default function GiftOverlay() {
   const { user } = useAuth();
   const [queue, setQueue] = useState([]); // Queue for multiple gifts

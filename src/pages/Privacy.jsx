@@ -70,7 +70,7 @@ export default function Privacy() {
       ctaTitle="Review how stories appear publicly"
       ctaText="Use the homepage and story pages to validate what is intentionally public, then compare it against the privacy expectations you want for launch."
       ctaPrimary={{ label: "Browse Home", to: "/" }}
-      ctaSecondary={{ label: "Read Terms", to: "/terms" }}
+      ctaSecondary={{ label: "Contact Support", to: "/contact" }}
     />
   );
 }

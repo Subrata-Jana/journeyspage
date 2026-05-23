@@ -8,7 +8,7 @@ import {
   Camera, MapPin, Award, Edit2, Globe, BookOpen, Heart, 
   Share2, Save, User, Link as LinkIcon, ArrowLeft,
   Facebook, Instagram, Youtube, Twitter, Gem, Lock, Eye, Clock, 
-  Gift, Briefcase, Sun, Moon // Added Sun/Moon
+  Gift, Briefcase, Sun, Moon, ShieldCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from 'react-hot-toast';
@@ -20,6 +20,7 @@ import LevelBadge from "../components/premium/LevelBadge";
 import LevelProgress from "../components/premium/LevelProgress";
 import { buildAvatarFields, getProfilePhotoUrl } from "../utils/userProfile";
 import { goBackOrFallback } from "../utils/navigation";
+import { isAuthorizedAdminEmail, USER_ROLES } from "../utils/admin";
 
 export default function Profile() {
   const { user } = useAuth(); // Current logged-in user
@@ -67,6 +68,8 @@ export default function Profile() {
     instagram: "",
     youtube: "",
     twitter: "",
+    email: "",
+    role: USER_ROLES.USER,
     xp: 0,
     badges: [],
     inventory: [], // The Wallet (Active/Expiring items)
@@ -103,6 +106,8 @@ export default function Profile() {
             instagram: data.instagram || "",
             youtube: data.youtube || "",
             twitter: data.twitter || "",
+            email: data.email || "",
+            role: data.role || USER_ROLES.USER,
             xp: data.xp || 0,
             badges: data.badges || [],
             inventory: data.inventory || [],
@@ -298,6 +303,16 @@ export default function Profile() {
                   />
                 ) : (
                   <h1 className="text-4xl font-bold text-slate-900 dark:text-white tracking-tight drop-shadow-sm">{profileData.name}</h1>
+                )}
+                {(profileData.role === USER_ROLES.EDITOR || profileData.role === USER_ROLES.ADMIN || isAuthorizedAdminEmail(profileData.email)) && (
+                  <div className={`mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-[0.18em] border ${
+                    profileData.role === USER_ROLES.EDITOR
+                      ? "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                      : "bg-purple-500/10 text-purple-500 border-purple-500/20"
+                  }`}>
+                    <ShieldCheck size={14} />
+                    {profileData.role === USER_ROLES.EDITOR ? "Editor" : "Admin"}
+                  </div>
                 )}
                 
                 <div className="flex flex-wrap items-center gap-4 text-slate-600 dark:text-slate-400 mt-3 text-sm">

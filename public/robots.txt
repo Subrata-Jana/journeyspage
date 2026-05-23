@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://journeyspage-c558b.web.app/sitemap.xml

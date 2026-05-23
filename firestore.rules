@@ -19,8 +19,21 @@ service cloud.firestore {
       );
     }
 
+    function isEditor() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "editor";
+    }
+
+    function isReviewStaff() {
+      return isAdmin() || isEditor();
+    }
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isNotChangingAdminRole() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(["role"]);
     }
 
     function storyData(storyId) {
@@ -30,14 +43,40 @@ service cloud.firestore {
     function canReadStory(storyId) {
       return storyData(storyId).status == "approved" ||
         (isSignedIn() && storyData(storyId).authorId == request.auth.uid) ||
-        isAdmin();
+        isAdmin() ||
+        canReviewStory(storyId);
+    }
+
+    function canReviewStory(storyId) {
+      return isEditor() &&
+        storyData(storyId).status == "pending" &&
+        storyData(storyId).authorId != request.auth.uid;
+    }
+
+    function isEditorReviewUpdate() {
+      return isEditor() &&
+        resource.data.status == "pending" &&
+        resource.data.authorId != request.auth.uid &&
+        request.resource.data.authorId == resource.data.authorId &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.status in ["approved", "returned", "rejected"] &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status",
+          "published",
+          "feedback",
+          "adminNotes",
+          "updatedAt",
+          "reviewedAt",
+          "reviewedBy",
+          "reviewedByName"
+        ]);
     }
 
     match /users/{userId} {
       allow read: if isSignedIn();
       allow create: if isOwner(userId);
 
-      allow update: if isOwner(userId) || isAdmin() || (
+      allow update: if isAdmin() || (isOwner(userId) && isNotChangingAdminRole()) || (
         isSignedIn() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "trophies",
@@ -60,7 +99,7 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         resource.data.recipientId == request.auth.uid ||
         resource.data.recipientId == "broadcast" ||
-        (resource.data.recipientId == "admin" && isAdmin()) ||
+        (resource.data.recipientId == "admin" && isReviewStaff()) ||
         isAdmin()
       );
 
@@ -81,7 +120,8 @@ service cloud.firestore {
     match /stories/{storyId} {
       allow read: if resource.data.status == "approved" ||
         (isSignedIn() && resource.data.authorId == request.auth.uid) ||
-        isAdmin();
+        isAdmin() ||
+        (isEditor() && resource.data.status == "pending" && resource.data.authorId != request.auth.uid);
 
       allow create: if isSignedIn() &&
         request.resource.data.authorId == request.auth.uid &&
@@ -89,6 +129,7 @@ service cloud.firestore {
 
       allow update: if
         isAdmin() ||
+        isEditorReviewUpdate() ||
         (
           isSignedIn() &&
           resource.data.authorId == request.auth.uid &&

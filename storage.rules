@@ -26,6 +26,15 @@ service firebase.storage {
         request.resource.contentType.matches('image/.*');
     }
 
+    function isReasonableImage(maxBytes) {
+      return isImageUpload() && request.resource.size <= maxBytes;
+    }
+
+    function isStoryAuthor(storyId) {
+      return isSignedIn() &&
+        firestore.get(/databases/(default)/documents/stories/$(storyId)).data.authorId == request.auth.uid;
+    }
+
     match /site_assets/{fileName} {
       allow read: if true;
       allow write: if isAdmin();
@@ -33,17 +42,17 @@ service firebase.storage {
 
     match /avatars/{userId}/{allPaths=**} {
       allow read: if true;
-      allow write: if (isOwner(userId) || isAdmin()) && isImageUpload();
+      allow write: if (isOwner(userId) || isAdmin()) && isReasonableImage(5 * 1024 * 1024);
     }
 
     match /users/{userId}/{allPaths=**} {
       allow read: if true;
-      allow write: if (isOwner(userId) || isAdmin()) && isImageUpload();
+      allow write: if (isOwner(userId) || isAdmin()) && isReasonableImage(8 * 1024 * 1024);
     }
 
     match /stories/{storyId}/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn() && isImageUpload();
+      allow write: if (isStoryAuthor(storyId) || isAdmin()) && isReasonableImage(8 * 1024 * 1024);
     }
   }
 }

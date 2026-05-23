@@ -26,6 +26,7 @@ import {
   getDoc,
   updateDoc,
   serverTimestamp,
+  onSnapshot,
 } from "firebase/firestore";
 
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -81,25 +82,46 @@ export const AuthProvider = ({ children }) => {
 
   // 🔐 Auth listener
   useEffect(() => {
+    let profileUnsub = null;
+
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (profileUnsub) {
+        profileUnsub();
+        profileUnsub = null;
+      }
+
       setUser(firebaseUser);
       if (firebaseUser) {
         await loadOrCreateProfile(firebaseUser);
+        profileUnsub = onSnapshot(doc(db, "users", firebaseUser.uid), (snap) => {
+          if (snap.exists()) {
+            setUserProfile(normalizeUserProfile(snap.data()));
+          }
+        });
       } else {
         setUserProfile(null);
       }
       setLoading(false);
     });
 
-    return unsub;
+    return () => {
+      if (profileUnsub) profileUnsub();
+      unsub();
+    };
   }, [loadOrCreateProfile]);
 
   // ======================
   // AUTH ACTIONS
   // ======================
-  const login = useCallback((email, password) => {
-    return signInWithEmailAndPassword(auth, email, password);
-  }, []);
+  const login = useCallback(
+    async (email, password) => {
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      setUser(cred.user);
+      await loadOrCreateProfile(cred.user);
+      return cred;
+    },
+    [loadOrCreateProfile]
+  );
 
   const register = useCallback(async (email, password, name = "") => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
@@ -133,7 +155,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const resetPassword = useCallback(
-    (email) => sendPasswordResetEmail(auth, email),
+    (email) => sendPasswordResetEmail(auth, email.trim()),
     []
   );
 

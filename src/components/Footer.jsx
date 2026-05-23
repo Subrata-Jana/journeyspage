@@ -1,8 +1,14 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { 
-  Compass, Facebook, Instagram, Twitter, Youtube, 
-  ArrowRight, Heart, Globe, ShieldCheck, Send 
+import {
+  ArrowRight,
+  Compass,
+  Facebook,
+  Globe,
+  Instagram,
+  ShieldCheck,
+  Twitter,
+  Youtube,
 } from "lucide-react";
 
 export default function Footer() {
@@ -40,7 +46,7 @@ export default function Footer() {
           </div>
 
           {/* Premium Newsletter Input */}
-          <div className="w-full lg:w-auto min-w-[350px]">
+          <div className="w-full min-w-0 lg:w-auto lg:min-w-[350px]">
             <div className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 p-1.5 rounded-2xl flex items-center focus-within:ring-2 focus-within:ring-orange-500/50 transition-all shadow-sm">
                 <input 
                   type="email" 
@@ -75,18 +81,15 @@ export default function Footer() {
             <FooterColumn 
               title="Discover" 
               links={[
-                { label: "Trending Stories", to: "/search" },
-                { label: "Featured Guides", to: "/guides" },
-                { label: "New Destinations", to: "/new" },
-                { label: "Community Picks", to: "/picks" }
+                { label: "Home", to: "/" },
+                { label: "Create A Story", to: "/register" },
+                { label: "Login", to: "/login" }
               ]} 
             />
             <FooterColumn 
               title="Company" 
               links={[
                 { label: "About Us", to: "/about" },
-                { label: "Careers", to: "/careers" },
-                { label: "Press Kit", to: "/press" },
                 { label: "Contact", to: "/contact" }
               ]} 
             />
@@ -94,9 +97,7 @@ export default function Footer() {
               title="Legal" 
               links={[
                 { label: "Privacy Policy", to: "/privacy" },
-                { label: "Terms of Service", to: "/terms" },
-                { label: "Cookie Policy", to: "/cookies" },
-                { label: "Security", to: "/security" }
+                { label: "Terms Of Service", to: "/terms" }
               ]} 
             />
         </div>
@@ -144,6 +145,8 @@ const FooterColumn = ({ title, links }) => (
 const SocialIcon = ({ icon, href }) => (
   <a 
     href={href} 
+    aria-label="Social link"
+    rel="noopener noreferrer"
     className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 hover:bg-orange-500 hover:text-white dark:hover:bg-white dark:hover:text-black transition-all duration-300 hover:-translate-y-1"
   >
     {icon}

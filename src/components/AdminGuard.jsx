@@ -1,10 +1,10 @@
 import { useAuth } from "../contexts/AuthContext";
 import { Navigate } from "react-router-dom";
 import { ShieldAlert } from "lucide-react";
-import { isAuthorizedAdmin } from "../utils/admin";
+import { isReviewStaff } from "../utils/admin";
 
 export default function AdminGuard({ children }) {
-  const { user, loading } = useAuth();
+  const { user, userProfile, loading } = useAuth();
 
   if (loading) {
     return (
@@ -17,14 +17,14 @@ export default function AdminGuard({ children }) {
     );
   }
 
-  // If user is logged in BUT not the admin -> Kick to Home
-  if (user && !isAuthorizedAdmin(user)) {
+  // If user is logged in but not admin/editor -> Kick to Home
+  if (user && !isReviewStaff(user, userProfile)) {
     return <Navigate to="/" replace />;
   }
 
-  // If not logged in -> Kick to Login
+  // If not logged in -> Kick to Admin Login
   if (!user) {
-      return <Navigate to="/login" replace />;
+      return <Navigate to="/admin-login" replace />;
   }
 
   return children;

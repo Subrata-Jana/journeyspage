@@ -45,6 +45,17 @@ export const buildApprovalPayload = () => ({
   updatedAt: serverTimestamp(),
 });
 
+export const buildRejectionPayload = ({ reason = "", reviewerId = "", reviewerName = "" } = {}) => ({
+  status: "rejected",
+  published: false,
+  feedback: {},
+  adminNotes: reason.trim() || "This story was rejected during review.",
+  reviewedBy: reviewerId,
+  reviewedByName: reviewerName,
+  reviewedAt: serverTimestamp(),
+  updatedAt: serverTimestamp(),
+});
+
 export async function notifyStorySubmittedForReview({
   storyId,
   title,
@@ -73,13 +84,24 @@ export async function returnStoryForRevision({
   title,
   existingFeedback = {},
   generalNote = "",
+  reviewerId = "",
+  reviewerName = "",
 }) {
+  if (reviewerId && authorId && reviewerId === authorId) {
+    throw new Error("reviewer-cannot-review-own-story");
+  }
+
   const { payload, feedback, summary } = buildReviewReturnData({
     existingFeedback,
     generalNote,
   });
 
-  await updateDoc(doc(db, "stories", storyId), payload);
+  await updateDoc(doc(db, "stories", storyId), {
+    ...payload,
+    reviewedBy: reviewerId,
+    reviewedByName: reviewerName,
+    reviewedAt: serverTimestamp(),
+  });
 
   if (authorId) {
     await sendNotification({
@@ -101,8 +123,23 @@ export async function returnStoryForRevision({
   return { payload, feedback, summary };
 }
 
-export async function approveStoryReview({ storyId, authorId, title }) {
-  const payload = buildApprovalPayload();
+export async function approveStoryReview({
+  storyId,
+  authorId,
+  title,
+  reviewerId = "",
+  reviewerName = "",
+}) {
+  if (reviewerId && authorId && reviewerId === authorId) {
+    throw new Error("reviewer-cannot-review-own-story");
+  }
+
+  const payload = {
+    ...buildApprovalPayload(),
+    reviewedBy: reviewerId,
+    reviewedByName: reviewerName,
+    reviewedAt: serverTimestamp(),
+  };
   await updateDoc(doc(db, "stories", storyId), payload);
   if (authorId) {
     const syncResult = await syncUserGamification(authorId);
@@ -122,6 +159,38 @@ export async function approveStoryReview({ storyId, authorId, title }) {
       entityId: storyId,
       channel: "review",
       meta: { reviewStatus: "approved" },
+    });
+  }
+
+  return payload;
+}
+
+export async function rejectStoryReview({
+  storyId,
+  authorId,
+  title,
+  reason = "",
+  reviewerId = "",
+  reviewerName = "",
+}) {
+  if (reviewerId && authorId && reviewerId === authorId) {
+    throw new Error("reviewer-cannot-review-own-story");
+  }
+
+  const payload = buildRejectionPayload({ reason, reviewerId, reviewerName });
+  await updateDoc(doc(db, "stories", storyId), payload);
+
+  if (authorId) {
+    await sendNotification({
+      recipientId: authorId,
+      type: "error",
+      title: "Story Rejected",
+      message: `"${title}" was not approved. ${payload.adminNotes}`,
+      link: `/story/${storyId}`,
+      entityType: "story",
+      entityId: storyId,
+      channel: "review",
+      meta: { reviewStatus: "rejected" },
     });
   }
 

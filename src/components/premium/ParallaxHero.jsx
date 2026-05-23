@@ -9,9 +9,9 @@ export default function ParallaxHero() {
   return (
     <section ref={ref} className="relative h-[420px] rounded-2xl overflow-hidden">
       {/* Furthest background */}
-      <div data-depth="0.02" className="absolute inset-0 bg-[url('/assets/mountains-bg.jpg')] bg-cover bg-center transform" />
+      <div data-depth="0.02" className="absolute inset-0 bg-[linear-gradient(135deg,#0f172a_0%,#1e3a5f_48%,#f97316_100%)] transform" />
       {/* middle layer (clouds) */}
-      <div data-depth="0.05" className="absolute inset-0 bg-[url('/assets/clouds.png')] opacity-30 mix-blend-screen" />
+      <div data-depth="0.05" className="absolute inset-0 bg-[radial-gradient(circle_at_25%_25%,rgba(255,255,255,0.24),transparent_24%),radial-gradient(circle_at_70%_35%,rgba(255,255,255,0.18),transparent_22%)] opacity-70 mix-blend-screen" />
       {/* Foreground layer */}
       <div data-depth="0.12" className="absolute inset-0 flex items-end justify-center pointer-events-none">
         <div className="w-3/4 transform translate-y-8">

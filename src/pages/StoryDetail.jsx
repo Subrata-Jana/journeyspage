@@ -15,16 +15,17 @@ import {
 import * as LucideIcons from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import { db } from "../services/firebase";
+import { useAuth } from "../contexts/AuthContext";
 import { useMetaOptions } from "../hooks/useMetaOptions";
 import GallerySlider from "../components/GallerySlider";
 import ThreeSixtyViewer from "../components/ThreeSixtyViewer";
 import { toggleStoryLike, toggleUserTrack, trackShare } from "../services/gamificationService";
 import { sendNotification } from "../services/notificationService";
-import { approveStoryReview, returnStoryForRevision } from "../services/reviewService";
+import { approveStoryReview, rejectStoryReview, returnStoryForRevision } from "../services/reviewService";
 import TreasureSpawner from "../components/premium/TreasureSpawner";
 import GiftModal from "../components/gamification/GiftModal";
 import SmartImage from "../components/ui/SmartImage";
-import { isAuthorizedAdmin } from "../utils/admin";
+import { canReviewStoryAsStaff } from "../utils/admin";
 import { goBackOrFallback } from "../utils/navigation";
 import { getProfilePhotoUrl } from "../utils/userProfile";
 
@@ -43,6 +44,7 @@ const getColorHex = (name) => {
 };
 
 export default function StoryDetail() {
+    const { userProfile } = useAuth();
     const { storyId } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
@@ -81,8 +83,6 @@ export default function StoryDetail() {
     const [lightboxIndex, setLightboxIndex] = useState(-1);
 
     // ⚡ ADMIN LOGIC CHECK
-    const isAdminView = isAuthorizedAdmin(currentUser);
-
     const [feedback, setFeedback] = useState({});
     const [isSubmittingReview, setIsSubmittingReview] = useState(false);
     const [confirmAction, setConfirmAction] = useState(null);
@@ -135,6 +135,7 @@ export default function StoryDetail() {
     const scaleX = useSpring(scrollYProgress, { stiffness: 100, damping: 30, restDelta: 0.001 });
 
     const isResubmission = story?.status === 'pending' && story?.feedback && Object.keys(story.feedback).length > 0;
+    const isAdminView = canReviewStoryAsStaff(currentUser, userProfile, story);
 
     useEffect(() => {
         if (!storyId) return;
@@ -156,10 +157,12 @@ export default function StoryDetail() {
                     setFeedback(cleanFeedback);
                 }
 
+                const canModerateStory = canReviewStoryAsStaff(currentUser, userProfile, storyData);
+
                 if (
                     !storyData.published &&
-                    !isAdminView &&
-                    !(isAuthor && (isReturned || isPending))
+                    !canModerateStory &&
+                    !(isAuthor && (isReturned || isPending || storyData.status === 'rejected'))
                 ) {
                     navigate("/dashboard", { replace: true });
                     return;
@@ -205,7 +208,7 @@ export default function StoryDetail() {
             } catch (err) { console.error("Error:", err); navigate("/dashboard", { replace: true }); } finally { setLoading(false); }
         }
         fetchStoryAndAuthor();
-    }, [storyId, navigate, currentUser, isAdminView]);
+    }, [storyId, navigate, currentUser, userProfile]);
 
     useEffect(() => {
         if (!storyId) return;
@@ -367,12 +370,17 @@ export default function StoryDetail() {
     }, [isAdminView]);
 
     const processApprove = async () => {
+        if (!canReviewStoryAsStaff(currentUser, userProfile, story)) {
+            return toast.error("You cannot review your own story.");
+        }
         setIsSubmittingReview(true);
         try {
             await approveStoryReview({
                 storyId,
                 authorId: story.authorId,
                 title: story.title,
+                reviewerId: currentUser?.uid || "",
+                reviewerName: userProfile?.name || currentUser?.displayName || currentUser?.email || "Reviewer",
             });
             toast.success("Story Published Successfully!");
             navigate("/admin");
@@ -382,6 +390,9 @@ export default function StoryDetail() {
     };
 
     const processReturn = async () => {
+        if (!canReviewStoryAsStaff(currentUser, userProfile, story)) {
+            return toast.error("You cannot review your own story.");
+        }
         setIsSubmittingReview(true);
         try {
             await returnStoryForRevision({
@@ -390,11 +401,35 @@ export default function StoryDetail() {
                 title: story.title,
                 existingFeedback: feedback,
                 generalNote: feedback.general || "",
+                reviewerId: currentUser?.uid || "",
+                reviewerName: userProfile?.name || currentUser?.displayName || currentUser?.email || "Reviewer",
             });
             toast.success("Story returned to author");
             navigate("/admin");
         } catch (error) {
             toast.error("Failed to return story");
+        } finally { setIsSubmittingReview(false); }
+    };
+
+    const processReject = async () => {
+        if (!canReviewStoryAsStaff(currentUser, userProfile, story)) {
+            return toast.error("You cannot review your own story.");
+        }
+        const reason = feedback.general || "This story does not meet the publishing guidelines.";
+        setIsSubmittingReview(true);
+        try {
+            await rejectStoryReview({
+                storyId,
+                authorId: story.authorId,
+                title: story.title,
+                reason,
+                reviewerId: currentUser?.uid || "",
+                reviewerName: userProfile?.name || currentUser?.displayName || currentUser?.email || "Reviewer",
+            });
+            toast.success("Story rejected");
+            navigate("/admin");
+        } catch (error) {
+            toast.error("Failed to reject story");
         } finally { setIsSubmittingReview(false); }
     };
 
@@ -439,7 +474,7 @@ export default function StoryDetail() {
                         <ArrowLeft size={24} className="group-hover:-translate-x-1 transition-transform" />
                     </button>
                     <div className="pointer-events-auto flex gap-2 md:gap-3">
-                        {isAdminView && <div className="hidden md:flex px-4 py-2 bg-orange-600 text-white rounded-full font-bold shadow-lg items-center gap-2"><ShieldAlert size={16} /> Admin</div>}
+                        {isAdminView && <div className="hidden md:flex px-4 py-2 bg-orange-600 text-white rounded-full font-bold shadow-lg items-center gap-2"><ShieldAlert size={16} /> Reviewer</div>}
                         {isAuthorView && <div className="hidden md:flex px-4 py-2 bg-red-600 text-white rounded-full font-bold shadow-lg items-center gap-2"><Edit3 size={16} /> Revision</div>}
                         <button onClick={() => setIsDark(!isDark)} className="p-3 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 text-white hover:rotate-12 transition-all shadow-lg">
                             {isDark ? <Sun size={24} className="text-yellow-400" /> : <Moon size={24} />}
@@ -736,6 +771,13 @@ export default function StoryDetail() {
                         </div>
                         <div className="flex gap-2 w-full md:w-auto">
                             <button
+                                onClick={() => setConfirmAction('reject')}
+                                disabled={isSubmittingReview}
+                                className="flex-1 md:flex-none px-4 py-3 rounded-xl font-bold text-xs md:text-sm transition-all bg-red-600 hover:bg-red-500 text-white shadow-lg"
+                            >
+                                Reject
+                            </button>
+                            <button
                                 onClick={() => setConfirmAction('return')}
                                 disabled={!hasIssues || isSubmittingReview}
                                 className={`flex-1 md:flex-none px-4 py-3 rounded-xl font-bold text-xs md:text-sm transition-all
@@ -772,10 +814,21 @@ export default function StoryDetail() {
                     {confirmAction && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
                             <div className="bg-[#1A1F2E] border border-white/10 p-6 md:p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center">
-                                <h3 className="text-xl md:text-2xl font-black text-white mb-2">{confirmAction === 'approve' ? "Publish Story?" : "Return to Author?"}</h3>
+                                <h3 className="text-xl md:text-2xl font-black text-white mb-2">
+                                    {confirmAction === 'approve'
+                                        ? "Publish Story?"
+                                        : confirmAction === 'reject'
+                                            ? "Reject Story?"
+                                            : "Return to Author?"}
+                                </h3>
                                 <div className="flex gap-3 mt-6">
                                     <button onClick={() => setConfirmAction(null)} className="flex-1 py-3 rounded-xl font-bold bg-slate-800 text-slate-300">Cancel</button>
-                                    <button onClick={confirmAction === 'approve' ? processApprove : processReturn} className="flex-1 py-3 rounded-xl font-bold bg-orange-600 text-white">Confirm</button>
+                                    <button
+                                        onClick={confirmAction === 'approve' ? processApprove : confirmAction === 'reject' ? processReject : processReturn}
+                                        className={`flex-1 py-3 rounded-xl font-bold text-white ${confirmAction === 'reject' ? 'bg-red-600' : 'bg-orange-600'}`}
+                                    >
+                                        Confirm
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -795,10 +848,7 @@ const ReviewSection = ({
     flagPosition = "right-0 -top-2 md:-right-3 md:-top-3",
 }) => {
     const context = useContext(ReviewContext);
-
-    if (!context) return <div className={className}>{children}</div>;
-
-    const { isAdminView, isAuthorView, feedback, toggleFeedback, isResubmission } = context;
+    const { isAdminView, isAuthorView, feedback, toggleFeedback, isResubmission } = context || {};
 
     const [isOpen, setIsOpen] = useState(false);
     const [comment, setComment] = useState("");
@@ -810,6 +860,8 @@ const ReviewSection = ({
         if (feedback?.[id]) setComment(feedback[id]);
         else setComment("");
     }, [feedback, id, isOpen]);
+
+    if (!context) return <div className={className}>{children}</div>;
 
     if (!shouldShowFlag) {
         return <div className={className}>{children}</div>;

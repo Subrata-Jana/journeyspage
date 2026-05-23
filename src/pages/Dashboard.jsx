@@ -4,7 +4,7 @@ import {
   Search, Settings, LogOut, Compass, Eye, Pencil, Trash2,
   Menu, X, Globe, Sun, Moon, MapPin, 
   AlertCircle, Clock, RotateCcw, CheckCircle,
-  Users, Zap, Share2, MoreVertical, Heart, Calendar, Gift 
+  Users, Zap, Share2, MoreVertical, Heart, Calendar, Gift, ShieldAlert
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import toast, { Toaster } from "react-hot-toast";
@@ -24,9 +24,10 @@ import { processUserSession } from "../services/gamificationService";
 import InteractionHub from "../components/dashboard/InteractionHub"; 
 import { deleteStoryWithAssets } from "../services/storyCleanupService";
 import { getProfilePhotoUrl } from "../utils/userProfile";
+import { isReviewStaff } from "../utils/admin";
 
 export default function Dashboard() {
-  const { user, logout, loading } = useAuth();
+  const { user, userProfile, logout, loading } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialView = searchParams.get("view") || "overview";
@@ -49,6 +50,7 @@ export default function Dashboard() {
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
   const [siteLogo, setSiteLogo] = useState(null);
   const { currentRank, badges, loot, loading: gameLoading } = useGamification(userData.xp, userData.badges, userData.inventory);
+  const canAccessAdminPanel = isReviewStaff(user, userProfile);
 
   useEffect(() => {
     const nextView = searchParams.get("view") || "overview";
@@ -190,6 +192,9 @@ export default function Dashboard() {
           <NavItem icon={<Globe size={20}/>} label="Travel Hub" active={currentView === 'feed'} onClick={() => setCurrentView('feed')} />
           <NavItem icon={<FileText size={20}/>} label="My Stories" active={currentView === 'stories'} onClick={() => setCurrentView('stories')} />
           <div className="mt-8 mb-2 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</div>
+          {canAccessAdminPanel && (
+            <NavItem icon={<ShieldAlert size={20}/>} label="Admin Panel" onClick={() => navigate('/admin')} />
+          )}
           <NavItem icon={<Settings size={20}/>} label="Profile & Settings" onClick={() => navigate('/profile')} />
         </nav>
 

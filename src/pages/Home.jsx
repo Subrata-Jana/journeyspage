@@ -243,7 +243,7 @@ const pickRandomStoryId = (stories, excludeStoryId = null) => {
 
 function HomeSkeleton() {
   return (
-    <div className="-mt-[88px] bg-slate-50 dark:bg-[#0B0F19]">
+    <div className="-mt-[68px] bg-slate-50 dark:bg-[#0B0F19]">
       <div className="relative min-h-screen overflow-hidden bg-[#09111f]">
         <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-slate-900 via-[#0d1728] to-slate-950" />
         <div className="relative z-10 max-w-7xl mx-auto px-6 pt-36 pb-24 grid lg:grid-cols-[1.2fr_0.8fr] gap-8">
@@ -373,7 +373,7 @@ function HomeFallback({ onWrite, isLoggedIn, hasError = false }) {
   const actionLabel = isLoggedIn ? "Create The First Story" : "Join And Start Writing";
 
   return (
-    <div className="-mt-[88px] bg-slate-50 dark:bg-[#0B0F19]">
+    <div className="-mt-[68px] bg-slate-50 dark:bg-[#0B0F19]">
       <section className="relative overflow-hidden min-h-[78vh]">
         <div className="absolute inset-0">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(249,115,22,0.26),transparent_34%),linear-gradient(135deg,#07111d_0%,#0B0F19_52%,#101827_100%)]" />
@@ -1115,7 +1115,7 @@ export default function Home() {
   }
 
   return (
-    <div className="-mt-[88px] bg-slate-50 dark:bg-[#0B0F19]">
+    <div className="-mt-[68px] bg-slate-50 dark:bg-[#0B0F19]">
       <HeroSection
         story={heroStory}
         onExplore={handleExplore}

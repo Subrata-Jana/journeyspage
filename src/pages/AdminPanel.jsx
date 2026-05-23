@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom"; 
 import { 
-  collection, query, getDocs, doc, orderBy, deleteDoc, setDoc, getDoc, onSnapshot, updateDoc 
+  collection, query, getDocs, doc, orderBy, setDoc, getDoc, onSnapshot, where, serverTimestamp
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { signOut, onAuthStateChanged } from "firebase/auth";
+import { signOut } from "firebase/auth";
 import { db, auth, storage } from "../services/firebase";
 
 // 1. SAFE IMPORTS: We alias 'History' to 'HistoryIcon' to prevent the crash
@@ -13,7 +13,8 @@ import {
   Award, List, Gem, Edit2, Trash2, Save, 
   Plus, Search, X, Gift, LogOut, Sun, Moon, User, 
   CheckCircle, RotateCcw, Eye, Clock, Image as ImageIcon, UploadCloud, Menu,
-  AlertCircle, ArrowUp, ArrowDown, ChevronDown, HelpCircle, History as HistoryIcon, Telescope
+  AlertCircle, ArrowUp, ArrowDown, ChevronDown, HelpCircle, History as HistoryIcon, Telescope,
+  Users, ShieldCheck, Ban
 } from "lucide-react";
 
 // 2. DYNAMIC IMPORT for the icon picker
@@ -21,9 +22,10 @@ import * as LucideIcons from "lucide-react";
 
 import toast, { Toaster } from "react-hot-toast";
 import { formatDistanceToNow } from 'date-fns';
-import { returnStoryForRevision } from "../services/reviewService";
-import { isAuthorizedAdmin } from "../utils/admin";
+import { approveStoryReview, returnStoryForRevision, rejectStoryReview } from "../services/reviewService";
+import { canReviewStoryAsStaff, isAuthorizedAdmin, isReviewStaff, USER_ROLES } from "../utils/admin";
 import { deleteStoryWithAssets } from "../services/storyCleanupService";
+import { useAuth } from "../contexts/AuthContext";
 
 // --- CONSTANTS ---
 const SCROLLBAR_STYLES = `
@@ -67,10 +69,19 @@ const COLOR_PALETTE = [
 ];
 
 export default function AdminPanel() {
+  const { user, userProfile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "moderation");
   const [isDarkMode, setIsDarkMode] = useState(true); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
+  const isAdminUser = isAuthorizedAdmin(user, userProfile);
+  const isEditorUser = !isAdminUser && userProfile?.role === USER_ROLES.EDITOR;
+
+  useEffect(() => {
+    if (isEditorUser && activeTab !== "moderation") {
+      setActiveTab("moderation");
+    }
+  }, [activeTab, isEditorUser]);
 
   useEffect(() => {
     const nextTab = searchParams.get("tab") || "moderation";
@@ -108,7 +119,7 @@ export default function AdminPanel() {
       {/* MOBILE HEADER */}
       <div className={`md:hidden fixed top-0 w-full z-40 p-4 border-b flex items-center justify-between ${isDarkMode ? 'bg-[#111625] border-white/5' : 'bg-white border-slate-200'}`}>
           <div className="flex items-center gap-2 font-black text-lg">
-              <ShieldAlert className="text-orange-500" size={20} /> Admin
+              <ShieldAlert className="text-orange-500" size={20} /> {isEditorUser ? "Editor" : "Admin"}
           </div>
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg bg-slate-100 dark:bg-white/5">
               {isSidebarOpen ? <X size={20}/> : <Menu size={20}/>}
@@ -124,25 +135,30 @@ export default function AdminPanel() {
         <div className={`p-6 border-b shrink-0 ${isDarkMode ? 'border-white/5' : 'border-slate-100'} hidden md:block`}>
            <h1 className="text-xl font-black flex items-center gap-2 tracking-tight">
                 <ShieldAlert className="text-orange-500" size={24} /> 
-                <span>Admin<span className="text-slate-500">Suite</span></span>
+                <span>{isEditorUser ? "Editor" : "Admin"}<span className="text-slate-500">Suite</span></span>
            </h1>
         </div>
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar mt-16 md:mt-0">
             <div className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 mb-2 mt-4">Core</div>
             <SidebarItem icon={<Layout size={18}/>} label="Story Moderation" active={activeTab === "moderation"} onClick={() => {setActiveTab("moderation"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
-            <SidebarItem icon={<ImageIcon size={18}/>} label="Site Branding" active={activeTab === "branding"} onClick={() => {setActiveTab("branding"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+            {isAdminUser && (
+              <>
+                <SidebarItem icon={<ImageIcon size={18}/>} label="Site Branding" active={activeTab === "branding"} onClick={() => {setActiveTab("branding"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+                <SidebarItem icon={<Users size={18}/>} label="Editors" active={activeTab === "editors"} onClick={() => {setActiveTab("editors"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
 
-            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 mb-2 mt-6">Master Data</div>
-            <SidebarItem icon={<MapPin size={18}/>} label="Trip Types" active={activeTab === "tripTypes"} onClick={() => {setActiveTab("tripTypes"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
-            <SidebarItem icon={<Tag size={18}/>} label="Categories" active={activeTab === "categories"} onClick={() => {setActiveTab("categories"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
-            <SidebarItem icon={<Zap size={18}/>} label="Difficulty Levels" active={activeTab === "difficultyLevels"} onClick={() => {setActiveTab("difficultyLevels"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 mb-2 mt-6">Master Data</div>
+                <SidebarItem icon={<MapPin size={18}/>} label="Trip Types" active={activeTab === "tripTypes"} onClick={() => {setActiveTab("tripTypes"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+                <SidebarItem icon={<Tag size={18}/>} label="Categories" active={activeTab === "categories"} onClick={() => {setActiveTab("categories"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+                <SidebarItem icon={<Zap size={18}/>} label="Difficulty Levels" active={activeTab === "difficultyLevels"} onClick={() => {setActiveTab("difficultyLevels"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
 
-            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 mb-2 mt-6">Gamification</div>
-            <SidebarItem icon={<Award size={18}/>} label="Badges" active={activeTab === "badges"} onClick={() => {setActiveTab("badges"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
-            <SidebarItem icon={<List size={18}/>} label="Ranks" active={activeTab === "ranks"} onClick={() => {setActiveTab("ranks"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
-            <SidebarItem icon={<Gift size={18}/>} label="Loot Box (Heirlooms)" active={activeTab === "loot"} onClick={() => {setActiveTab("loot"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
-            <SidebarItem icon={<Gem size={18}/>} label="Treasures" active={activeTab === "treasures"} onClick={() => {setActiveTab("treasures"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 mb-2 mt-6">Gamification</div>
+                <SidebarItem icon={<Award size={18}/>} label="Badges" active={activeTab === "badges"} onClick={() => {setActiveTab("badges"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+                <SidebarItem icon={<List size={18}/>} label="Ranks" active={activeTab === "ranks"} onClick={() => {setActiveTab("ranks"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+                <SidebarItem icon={<Gift size={18}/>} label="Loot Box (Heirlooms)" active={activeTab === "loot"} onClick={() => {setActiveTab("loot"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+                <SidebarItem icon={<Gem size={18}/>} label="Treasures" active={activeTab === "treasures"} onClick={() => {setActiveTab("treasures"); setIsSidebarOpen(false);}} isDark={isDarkMode}/>
+              </>
+            )}
         </nav>
 
         <div className={`p-4 border-t mt-auto ${isDarkMode ? 'border-white/5 bg-black/20' : 'border-slate-200 bg-slate-50'}`}>
@@ -151,7 +167,7 @@ export default function AdminPanel() {
                     <User size={20} />
                 </div>
                 <div className="overflow-hidden">
-                    <p className={`text-sm font-bold truncate ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>Admin</p>
+                    <p className={`text-sm font-bold truncate ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>{isEditorUser ? "Editor" : "Admin"}</p>
                     <p className="text-xs text-slate-500 truncate">{auth.currentUser?.email || "admin@journeys.com"}</p>
                 </div>
             </div>
@@ -177,15 +193,16 @@ export default function AdminPanel() {
 
       <main className={`flex-1 overflow-y-auto p-4 md:p-8 pt-20 md:pt-8 scroll-smooth custom-scrollbar ${isDarkMode ? 'bg-[#0B0F19]' : 'bg-slate-50'}`}>
         <div className="max-w-5xl mx-auto pb-20">
-            {activeTab === "moderation" && <StoryModeration isDark={isDarkMode}/>}
-            {activeTab === "branding" && <LogoManager isDark={isDarkMode}/>}
-            {activeTab === "tripTypes" && <MetaEditor title="Trip Types" docId="tripTypes" fields={['label', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
-            {activeTab === "categories" && <MetaEditor title="Categories (Terrain)" docId="categories" fields={['label', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
-            {activeTab === "difficultyLevels" && <MetaEditor title="Difficulty Levels" docId="difficultyLevels" fields={['label', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
-            {activeTab === "badges" && <MetaEditor title="Badges" docId="badges" fields={['name', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
-            {activeTab === "ranks" && <MetaEditor title="Ranks" docId="ranks" fields={['name', 'threshold', 'perk', 'color', 'icon']} isDark={isDarkMode}/>}
-            {activeTab === "loot" && <ManageLoot isDark={isDarkMode}/>}
-            {activeTab === "treasures" && <MetaEditor title="Hidden Treasures" docId="treasures" fields={['name', 'points', 'color', 'icon']} isDark={isDarkMode}/>}
+            {activeTab === "moderation" && <StoryModeration isDark={isDarkMode} user={user} userProfile={userProfile} isAdminUser={isAdminUser}/>}
+            {isAdminUser && activeTab === "branding" && <LogoManager isDark={isDarkMode}/>}
+            {isAdminUser && activeTab === "editors" && <EditorRoleManager isDark={isDarkMode} currentUser={user}/>}
+            {isAdminUser && activeTab === "tripTypes" && <MetaEditor title="Trip Types" docId="tripTypes" fields={['label', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
+            {isAdminUser && activeTab === "categories" && <MetaEditor title="Categories (Terrain)" docId="categories" fields={['label', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
+            {isAdminUser && activeTab === "difficultyLevels" && <MetaEditor title="Difficulty Levels" docId="difficultyLevels" fields={['label', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
+            {isAdminUser && activeTab === "badges" && <MetaEditor title="Badges" docId="badges" fields={['name', 'value', 'description', 'color', 'icon']} isDark={isDarkMode}/>}
+            {isAdminUser && activeTab === "ranks" && <MetaEditor title="Ranks" docId="ranks" fields={['name', 'threshold', 'perk', 'color', 'icon']} isDark={isDarkMode}/>}
+            {isAdminUser && activeTab === "loot" && <ManageLoot isDark={isDarkMode}/>}
+            {isAdminUser && activeTab === "treasures" && <MetaEditor title="Hidden Treasures" docId="treasures" fields={['name', 'points', 'color', 'icon']} isDark={isDarkMode}/>}
         </div>
       </main>
     </div>
@@ -207,7 +224,7 @@ function SidebarItem({ icon, label, active, onClick, isDark }) {
     )
 }
 
-function StoryModeration({ isDark }) {
+function StoryModeration({ isDark, user, userProfile, isAdminUser }) {
     const [searchParams, setSearchParams] = useSearchParams();
     const [allStories, setAllStories] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -220,6 +237,12 @@ function StoryModeration({ isDark }) {
     const [storyToReturn, setStoryToReturn] = useState(null);
     const [returnReason, setReturnReason] = useState(""); 
     const [isReturning, setIsReturning] = useState(false); 
+    const [showRejectModal, setShowRejectModal] = useState(false);
+    const [storyToReject, setStoryToReject] = useState(null);
+    const [rejectReason, setRejectReason] = useState("");
+    const [isRejecting, setIsRejecting] = useState(false);
+    const [isApprovingStoryId, setIsApprovingStoryId] = useState(null);
+    const isEditorOnly = userProfile?.role === USER_ROLES.EDITOR && !isAdminUser;
 
     const getStoryStatus = (story) => {
         if (story?.status) return story.status;
@@ -257,30 +280,50 @@ function StoryModeration({ isDark }) {
     }, [filterStatus, searchQuery, sortOrder, searchParams, setSearchParams]);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (!isAuthorizedAdmin(user)) {
-                setLoading(false);
-                return; 
-            }
+        if (isEditorOnly && filterStatus !== "pending") {
+            setFilterStatus("pending");
+        }
+    }, [filterStatus, isEditorOnly]);
 
+    useEffect(() => {
+        if (!isReviewStaff(user, userProfile)) {
+            setLoading(false);
+            setAllStories([]);
+            return;
+        }
+
+        let isMounted = true;
+
+        const fetchStories = async () => {
             try {
-                const q = query(collection(db, "stories"), orderBy("updatedAt", sortOrder));
-                const snap = await getDocs(q);
-                const fetched = snap.docs.map((d) => ({ 
-                    id: d.id, 
-                    ...d.data(),
-                    status: getStoryStatus(d.data())
-                })).filter((story) => getStoryStatus(story) !== "draft");
-                setAllStories(fetched);
+                setLoading(true);
+                const storiesQuery = isEditorOnly
+                    ? query(collection(db, "stories"), where("status", "==", "pending"), orderBy("updatedAt", sortOrder))
+                    : query(collection(db, "stories"), orderBy("updatedAt", sortOrder));
+                const snap = await getDocs(storiesQuery);
+                const fetched = snap.docs
+                    .map((d) => ({
+                        id: d.id,
+                        ...d.data(),
+                        status: getStoryStatus(d.data()),
+                    }))
+                    .filter((story) => getStoryStatus(story) !== "draft")
+                    .filter((story) => !isEditorOnly || story.authorId !== user?.uid);
+                if (isMounted) setAllStories(fetched);
             } catch (error) {
                 console.error("Error fetching stories:", error);
+                toast.error("Could not load moderation queue.");
             } finally {
-                setLoading(false);
+                if (isMounted) setLoading(false);
             }
-        });
+        };
 
-        return () => unsubscribe();
-    }, [sortOrder]); 
+        fetchStories();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [isEditorOnly, sortOrder, user, userProfile]); 
 
     const filteredStories = useMemo(() => {
         let stories = allStories;
@@ -309,8 +352,9 @@ function StoryModeration({ isDark }) {
         const pending = allStories.filter(isPendingStory).length;
         const approved = allStories.filter(isApprovedStory).length;
         const returned = allStories.filter(isReturnedStory).length;
+        const rejected = allStories.filter((story) => getStoryStatus(story) === "rejected").length;
         const total = allStories.length;
-        return { pending, approved, returned, total };
+        return { pending, approved, returned, rejected, total };
     }, [allStories]);
 
     const handleReview = (story) => {
@@ -318,18 +362,64 @@ function StoryModeration({ isDark }) {
     };
 
     const handleDelete = async (id) => {
+        if (!isAdminUser) return toast.error("Only admins can delete stories.");
         if(!window.confirm("Permanently delete this story?")) return;
         try {
             await deleteStoryWithAssets(id);
             setAllStories(prev => prev.filter(s => s.id !== id));
             toast.success("Story deleted");
-        } catch (e) { toast.error("Failed to delete"); }
+        } catch { toast.error("Failed to delete"); }
+    };
+
+    const handleApprove = async (story) => {
+        if (getStoryStatus(story) !== "pending") {
+            return toast.error("Only pending stories can be approved.");
+        }
+        if (!canReviewStoryAsStaff(user, userProfile, story)) {
+            return toast.error("You cannot approve your own story.");
+        }
+
+        setIsApprovingStoryId(story.id);
+        try {
+            const payload = await approveStoryReview({
+                storyId: story.id,
+                authorId: story.authorId,
+                title: story.title,
+                reviewerId: user?.uid || "",
+                reviewerName: userProfile?.name || user?.displayName || user?.email || "Reviewer",
+            });
+
+            setAllStories(prev => prev.map(s => s.id === story.id ? {
+                ...s,
+                ...payload,
+                status: "approved",
+                published: true,
+            } : s));
+            toast.success("Story approved and published.");
+        } catch (error) {
+            console.error("Approve story failed:", error);
+            toast.error(error?.message === "reviewer-cannot-review-own-story" ? "You cannot approve your own story." : "Failed to approve story.");
+        } finally {
+            setIsApprovingStoryId(null);
+        }
     };
 
     const openReturnModal = (story) => {
+        if (!canReviewStoryAsStaff(user, userProfile, story)) {
+            return toast.error("You cannot review your own story.");
+        }
         setStoryToReturn(story);
         setReturnReason(""); 
         setShowReturnModal(true);
+    };
+
+    const openRejectModal = (story) => {
+        if (!canReviewStoryAsStaff(user, userProfile, story)) {
+            return toast.error("You cannot review your own story.");
+        }
+        setStoryToReject(story);
+        setRejectReason("");
+        setShowRejectModal(true);
     };
 
     const submitReturn = async () => {
@@ -348,6 +438,8 @@ function StoryModeration({ isDark }) {
                 title: storyToReturn.title,
                 existingFeedback,
                 generalNote: note,
+                reviewerId: user?.uid || "",
+                reviewerName: userProfile?.name || user?.displayName || user?.email || "Reviewer",
             });
 
             setAllStories(prev => prev.map(s => s.id === storyToReturn.id ? { 
@@ -360,10 +452,41 @@ function StoryModeration({ isDark }) {
             
             toast.success("Story returned to author!");
             setShowReturnModal(false);
-        } catch (error) {
+        } catch {
             toast.error("Failed to return story.");
         } finally {
             setIsReturning(false);
+        }
+    };
+
+    const submitReject = async () => {
+        if (!storyToReject) return;
+        const note = rejectReason.trim();
+        if (!note) return toast.error("Please enter a rejection reason.");
+
+        setIsRejecting(true);
+        try {
+            const payload = await rejectStoryReview({
+                storyId: storyToReject.id,
+                authorId: storyToReject.authorId,
+                title: storyToReject.title,
+                reason: note,
+                reviewerId: user?.uid || "",
+                reviewerName: userProfile?.name || user?.displayName || user?.email || "Reviewer",
+            });
+
+            setAllStories(prev => prev.map(s => s.id === storyToReject.id ? {
+                ...s,
+                ...payload,
+                status: "rejected",
+                published: false,
+            } : s));
+            toast.success("Story rejected.");
+            setShowRejectModal(false);
+        } catch (error) {
+            toast.error(error?.message === "reviewer-cannot-review-own-story" ? "You cannot reject your own story." : "Failed to reject story.");
+        } finally {
+            setIsRejecting(false);
         }
     };
 
@@ -388,12 +511,12 @@ function StoryModeration({ isDark }) {
         if (!timestamp) return "N/A";
         try {
             return formatDistanceToNow(new Date(timestamp.seconds * 1000), { addSuffix: true });
-        } catch (e) { return "Unknown"; }
+        } catch { return "Unknown"; }
     };
 
     return (
         <div className="space-y-6 animate-in slide-in-from-right duration-500 pb-20">
-            <div className="grid grid-cols-3 gap-4 mb-2">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-2">
                 <div className={`p-4 rounded-2xl border ${isDark ? 'bg-blue-500/10 border-blue-500/20' : 'bg-blue-50 border-blue-100'}`}>
                     <div className="text-xs font-bold uppercase tracking-wider text-blue-500 mb-1">Pending Review</div>
                     <div className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>{stats.pending}</div>
@@ -401,6 +524,10 @@ function StoryModeration({ isDark }) {
                 <div className={`p-4 rounded-2xl border ${isDark ? 'bg-green-500/10 border-green-500/20' : 'bg-green-50 border-green-100'}`}>
                     <div className="text-xs font-bold uppercase tracking-wider text-green-500 mb-1">Approved</div>
                     <div className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>{stats.approved}</div>
+                </div>
+                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-red-500/10 border-red-500/20' : 'bg-red-50 border-red-100'}`}>
+                    <div className="text-xs font-bold uppercase tracking-wider text-red-500 mb-1">Rejected</div>
+                    <div className={`text-2xl font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>{stats.rejected}</div>
                 </div>
                 <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-800/50 border-white/10' : 'bg-slate-50 border-slate-100'}`}>
                     <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Total Stories</div>
@@ -437,9 +564,10 @@ function StoryModeration({ isDark }) {
 
             <div className={`p-1.5 rounded-xl flex flex-wrap gap-2 ${isDark ? 'bg-black/20 border border-white/5' : 'bg-slate-100 border border-slate-200'}`}>
                 <StatusTab id="pending" label="Pending" icon={Clock} count={stats.pending} color="bg-blue-600 text-white" />
-                <StatusTab id="approved" label="Approved" icon={CheckCircle} count={stats.approved} color="bg-green-600 text-white" />
-                <StatusTab id="returned" label="Returned" icon={RotateCcw} count={stats.returned} color="bg-orange-600 text-white" />
-                <StatusTab id="all" label="All" icon={List} count={stats.total} color="bg-slate-600 text-white" />
+                {!isEditorOnly && <StatusTab id="approved" label="Approved" icon={CheckCircle} count={stats.approved} color="bg-green-600 text-white" />}
+                {!isEditorOnly && <StatusTab id="returned" label="Returned" icon={RotateCcw} count={stats.returned} color="bg-orange-600 text-white" />}
+                {!isEditorOnly && <StatusTab id="rejected" label="Rejected" icon={Ban} count={stats.rejected} color="bg-red-600 text-white" />}
+                {!isEditorOnly && <StatusTab id="all" label="All" icon={List} count={stats.total} color="bg-slate-600 text-white" />}
             </div>
 
             <div className={`rounded-2xl border overflow-hidden shadow-2xl ${cardClass}`}>
@@ -503,11 +631,13 @@ function StoryModeration({ isDark }) {
                                         <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide inline-flex items-center gap-1.5
                                             ${getStoryStatus(story) === 'approved' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
                                                 getStoryStatus(story) === 'returned' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 
+                                                getStoryStatus(story) === 'rejected' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
                                                 getStoryStatus(story) === 'pending' ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
                                                 'bg-slate-500/10 text-slate-500 border border-slate-500/20'}
                                             `}>
                                                 {getStoryStatus(story) === 'approved' && <CheckCircle size={12}/>}
                                                 {getStoryStatus(story) === 'returned' && <RotateCcw size={12}/>}
+                                                {getStoryStatus(story) === 'rejected' && <Ban size={12}/>}
                                                 {getStoryStatus(story) === 'pending' && <Clock size={12}/>}
                                                 {getStoryStatus(story)}
                                         </span>
@@ -526,7 +656,17 @@ function StoryModeration({ isDark }) {
                                         >
                                             <Eye size={14}/> Review
                                         </button>
-                                        {getStoryStatus(story) !== 'approved' && getStoryStatus(story) !== 'returned' && (
+                                        {getStoryStatus(story) === 'pending' && (
+                                            <button
+                                                onClick={() => handleApprove(story)}
+                                                disabled={isApprovingStoryId === story.id}
+                                                className="px-3 py-2 bg-green-500/10 text-green-500 border border-green-500/20 rounded-lg hover:bg-green-500/20 transition-all font-bold disabled:cursor-not-allowed disabled:opacity-60"
+                                                title="Approve Story"
+                                            >
+                                                <CheckCircle size={16} />
+                                            </button>
+                                        )}
+                                        {getStoryStatus(story) === 'pending' && (
                                             <button 
                                                 onClick={() => openReturnModal(story)}
                                                 className="px-3 py-2 bg-orange-500/10 text-orange-500 border border-orange-500/20 rounded-lg hover:bg-orange-500/20 transition-all font-bold"
@@ -535,13 +675,24 @@ function StoryModeration({ isDark }) {
                                                 <RotateCcw size={16} />
                                             </button>
                                         )}
-                                        <button 
-                                            onClick={() => handleDelete(story.id)} 
-                                            className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition-colors" 
-                                            title="Delete"
-                                        >
-                                            <Trash2 size={16}/>
-                                        </button>
+                                        {getStoryStatus(story) === 'pending' && (
+                                            <button
+                                                onClick={() => openRejectModal(story)}
+                                                className="px-3 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-all font-bold"
+                                                title="Reject Story"
+                                            >
+                                                <Ban size={16} />
+                                            </button>
+                                        )}
+                                        {isAdminUser && (
+                                            <button 
+                                                onClick={() => handleDelete(story.id)} 
+                                                className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition-colors" 
+                                                title="Delete"
+                                            >
+                                                <Trash2 size={16}/>
+                                            </button>
+                                        )}
                                     </div>
                                 </td>
                             </tr>
@@ -598,8 +749,217 @@ function StoryModeration({ isDark }) {
                     </div>
                 </div>
             )}
+
+            {showRejectModal && storyToReject && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="w-full max-w-sm p-8 rounded-3xl shadow-2xl bg-[#1A1F2E] border border-white/10 text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-red-500/20 rounded-full blur-3xl pointer-events-none"/>
+                        <div className="relative z-10 flex flex-col items-center">
+                            <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mb-6 border border-red-500/20">
+                                <Ban size={32} className="text-red-500" />
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-2">Reject Story?</h3>
+                            <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+                                Rejection closes this submission. Add a clear reason so the author understands the decision.
+                            </p>
+                            <textarea
+                                value={rejectReason}
+                                onChange={(e) => setRejectReason(e.target.value)}
+                                className="w-full h-24 bg-black/30 border border-white/10 rounded-xl p-3 text-white text-sm mb-6 focus:outline-none focus:border-red-500 resize-none placeholder:text-white/20"
+                                placeholder="Why is this story rejected?"
+                            />
+                            <div className="flex gap-3 w-full">
+                                <button
+                                    onClick={() => setShowRejectModal(false)}
+                                    className="flex-1 py-3 rounded-xl font-bold text-slate-400 bg-white/5 hover:bg-white/10 hover:text-white transition-colors"
+                                    disabled={isRejecting}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={submitReject}
+                                    disabled={isRejecting}
+                                    className="flex-1 py-3 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-xl font-bold shadow-lg shadow-red-900/20 transition-all transform hover:scale-[1.02] flex items-center justify-center gap-2"
+                                >
+                                    {isRejecting ? "Rejecting..." : "Reject"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     ); 
+}
+
+function EditorRoleManager({ isDark, currentUser }) {
+    const [users, setUsers] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+    const cardClass = isDark ? "bg-[#111625] border-white/5" : "bg-white border-slate-200 shadow-sm";
+
+    useEffect(() => {
+        const loadUsers = async () => {
+            try {
+                setLoading(true);
+                const snap = await getDocs(collection(db, "users"));
+                setUsers(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+            } catch (error) {
+                console.error("Could not load users:", error);
+                toast.error("Could not load users.");
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadUsers();
+    }, []);
+
+    const filteredUsers = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return users;
+        return users.filter((item) =>
+            [item.name, item.displayName, item.email, item.role]
+                .filter(Boolean)
+                .some((value) => String(value).toLowerCase().includes(q))
+        );
+    }, [search, users]);
+
+    const setEditorRole = async (targetUser, enabled) => {
+        if (!targetUser?.id) return;
+        if (targetUser.id === currentUser?.uid) {
+            return toast.error("You cannot change your own review role here.");
+        }
+        if (targetUser.role === USER_ROLES.ADMIN || isAuthorizedAdmin(targetUser.email, targetUser)) {
+            return toast.error("Admin users cannot be changed from this editor panel.");
+        }
+
+        const nextRole = enabled ? USER_ROLES.EDITOR : USER_ROLES.USER;
+        const toastId = toast.loading(enabled ? "Enabling editor..." : "Disabling editor...");
+        try {
+            await setDoc(
+                doc(db, "users", targetUser.id),
+                {
+                    role: nextRole,
+                    roleUpdatedAt: serverTimestamp(),
+                    roleUpdatedBy: currentUser?.uid || "",
+                },
+                { merge: true }
+            );
+            setUsers((prev) =>
+                prev.map((item) =>
+                    item.id === targetUser.id ? { ...item, role: nextRole } : item
+                )
+            );
+            toast.success(enabled ? "Editor enabled." : "Editor disabled.", { id: toastId });
+        } catch (error) {
+            console.error("Role update failed:", error);
+            toast.error("Could not update role.", { id: toastId });
+        }
+    };
+
+    return (
+        <div className="space-y-6 animate-in slide-in-from-right duration-500">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 className={`text-3xl font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                        <Users className="text-orange-500" /> Editors
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-2 max-w-2xl">
+                        Editors can review pending stories, request revisions, approve, or reject submissions. They cannot review their own stories and cannot access admin-only settings.
+                    </p>
+                </div>
+                <div className="relative w-full md:w-72">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search users..."
+                        className={`w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none border transition-colors ${isDark ? 'bg-black/20 border-white/10 text-white focus:border-orange-500' : 'bg-white border-slate-200 text-slate-800 focus:border-orange-500'}`}
+                    />
+                </div>
+            </div>
+
+            <div className={`rounded-2xl border overflow-hidden shadow-2xl ${cardClass}`}>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead className={`text-xs uppercase font-bold ${isDark ? 'bg-white/5 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
+                            <tr>
+                                <th className="p-4">User</th>
+                                <th className="p-4">Current Role</th>
+                                <th className="p-4">Editor Scope</th>
+                                <th className="p-4 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody className={`divide-y text-sm ${isDark ? 'divide-white/5' : 'divide-slate-100'}`}>
+                            {loading && <tr><td colSpan="4" className="p-8 text-center text-slate-500">Loading users...</td></tr>}
+                            {!loading && filteredUsers.length === 0 && <tr><td colSpan="4" className="p-8 text-center text-slate-500">No users found.</td></tr>}
+                            {filteredUsers.map((item) => {
+                                const role = item.role || USER_ROLES.USER;
+                                const isEditor = role === USER_ROLES.EDITOR;
+                                const isAdminAccount = role === USER_ROLES.ADMIN || isAuthorizedAdmin(item.email, item);
+                                const isSelf = item.id === currentUser?.uid;
+                                return (
+                                    <tr key={item.id} className={`${isDark ? 'hover:bg-white/[0.02]' : 'hover:bg-slate-50'} transition-colors`}>
+                                        <td className="p-4">
+                                            <div className="flex items-center gap-3 min-w-[220px]">
+                                                <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center text-white font-bold">
+                                                    {item.photoURL || item.avatarUrl ? (
+                                                        <img src={item.photoURL || item.avatarUrl} alt="" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        (item.name || item.displayName || item.email || "U").slice(0, 1).toUpperCase()
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className={`font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                                        {item.name || item.displayName || "Unnamed User"}
+                                                    </div>
+                                                    <div className="text-xs text-slate-500 truncate">{item.email || item.id}</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="p-4">
+                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
+                                                isAdminAccount
+                                                    ? "bg-purple-500/10 text-purple-500"
+                                                    : isEditor
+                                                        ? "bg-blue-500/10 text-blue-500"
+                                                        : "bg-slate-500/10 text-slate-500"
+                                            }`}>
+                                                {isAdminAccount ? <ShieldCheck size={13} /> : isEditor ? <Edit2 size={13} /> : <User size={13} />}
+                                                {isAdminAccount ? "Admin" : isEditor ? "Editor" : "User"}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-xs text-slate-500 max-w-xs">
+                                            {isAdminAccount
+                                                ? "Full admin access."
+                                                : isEditor
+                                                    ? "Can review pending stories except their own."
+                                                    : "No moderation permissions."}
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            <button
+                                                onClick={() => setEditorRole(item, !isEditor)}
+                                                disabled={isAdminAccount || isSelf}
+                                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                                                    isAdminAccount || isSelf
+                                                        ? "bg-slate-500/10 text-slate-500 cursor-not-allowed"
+                                                        : isEditor
+                                                            ? "bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                                                            : "bg-blue-600 text-white hover:bg-blue-500 shadow-lg"
+                                                }`}
+                                            >
+                                                {isEditor ? "Disable Editor" : "Enable Editor"}
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
 }
 
 function LogoManager({ isDark }) {

@@ -6,6 +6,35 @@ import Input from "../components/ui/Input";
 import Button from "../components/ui/Button"; // Now using your custom glass button
 import AuthCard from "../components/ui/AuthCard";
 
+function hasApiKeyError(message = "") {
+  const normalized = message.toLowerCase();
+  return normalized.includes("api key") || normalized.includes("api_key");
+}
+
+function getLoginErrorMessage(code, message = "") {
+  if (hasApiKeyError(message)) {
+    return "Firebase API key is not valid for this app.";
+  }
+
+  switch (code) {
+    case "auth/invalid-email":
+      return "Please enter a valid email address.";
+    case "auth/user-disabled":
+      return "This account has been disabled.";
+    case "auth/invalid-credential":
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+      return "Invalid email or password.";
+    case "auth/too-many-requests":
+      return "Too many login attempts. Please try again later.";
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
+      return "Firebase API key is not valid for this app.";
+    default:
+      return "Unable to log in. Please try again.";
+  }
+}
+
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -20,10 +49,11 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await login(form.email, form.password);
+      await login(form.email.trim(), form.password);
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      setError("Invalid login credentials.");
+      console.error("login failed", err);
+      setError(getLoginErrorMessage(err.code, err.message));
     } finally {
       setLoading(false);
     }
@@ -66,6 +96,7 @@ export default function Login() {
               placeholder="Email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
+              autoComplete="email"
               required
             />
 
@@ -75,6 +106,7 @@ export default function Login() {
               placeholder="Password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
+              autoComplete="current-password"
               required
             />
 
