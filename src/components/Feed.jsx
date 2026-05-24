@@ -197,7 +197,6 @@ export default function Feed({ activeTab = "explore" }) {
     if (!user) return toast.error("Please login to track scouts");
     if (user.uid === authorId) return toast.error("You cannot track yourself");
 
-    const isTracking = trackingList.includes(authorId);
     try {
         const result = await toggleUserTrack(authorId, user.uid);
         if (!result.success) throw result.error || new Error("track-failed");
@@ -297,7 +296,6 @@ export default function Feed({ activeTab = "explore" }) {
 
 function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, currentUser }) {
   const [imgError, setImgError] = useState(false);
-  const [isHovering, setIsHovering] = useState(false);
   
   // ⚡ OPTIMIZATION: Use stored data first (Instant Load)
   const [avatarUrl, setAvatarUrl] = useState(story.authorPhoto || story.authorImage || story.photoURL || null);
@@ -361,17 +359,18 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
   const handleTrackClick = (e) => { e.preventDefault(); e.stopPropagation(); onToggleTrack(); };
 
   return (
-    <motion.div layout initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: index * 0.05 }} className="group relative bg-[#111827] dark:bg-[#0f172a] rounded-[1.5rem] border border-slate-800 shadow-xl cursor-pointer overflow-hidden" onClick={handleCardClick} onMouseMove={handleMouseMove} onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)}>
+    <motion.div layout initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: index * 0.05 }} className="group relative bg-[#111827] dark:bg-[#0f172a] rounded-[1.55rem] border border-slate-800/90 shadow-[0_18px_45px_rgba(15,23,42,0.18)] cursor-pointer overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(15,23,42,0.28)] hover:border-orange-500/30" onClick={handleCardClick} onMouseMove={handleMouseMove}>
       <motion.div className="pointer-events-none absolute -inset-px rounded-[1.5rem] opacity-0 transition duration-300 group-hover:opacity-100" style={{ background: useMotionTemplate`radial-gradient(650px circle at ${mouseX}px ${mouseY}px, rgba(249, 115, 22, 0.15), transparent 80%)` }} />
       <motion.div className="pointer-events-none absolute -inset-px rounded-[1.5rem] opacity-0 transition duration-300 group-hover:opacity-100" style={{ background: useMotionTemplate`radial-gradient(400px circle at ${mouseX}px ${mouseY}px, rgba(249, 115, 22, 0.4), transparent 40%)`, zIndex: 0 }} />
 
       <div className="relative flex flex-col h-full bg-[#111827] dark:bg-[#0f172a] rounded-[1.4rem] z-10 m-[1px] overflow-hidden">
           <div className="relative w-full aspect-[4/4] overflow-hidden bg-slate-800">
             <motion.img src={displayImage} alt={story.title} className="w-full h-full object-cover transition-all duration-700 ease-out group-hover:scale-110 group-hover:brightness-110"/>
-            <div className="absolute inset-0 bg-gradient-to-t from-[#111827] via-transparent to-black/20 opacity-60" />
-            <div className="absolute top-3 left-3 flex gap-2">
-                {tripType && (<div className="px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"><Flag size={10} className="text-orange-400"/> {tripType}</div>)}
-                <div className="px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"><Clock size={10} className="text-sky-400"/> {daysCount} Days</div>
+            <div className="absolute inset-0 bg-gradient-to-t from-[#111827] via-[#111827]/10 to-black/35 opacity-80" />
+            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#111827] to-transparent" />
+            <div className="absolute top-3 left-3 right-3 flex flex-wrap gap-2">
+                {tripType && (<div className="max-w-[70%] truncate px-2.5 py-1 rounded-full bg-black/58 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-lg"><Flag size={10} className="shrink-0 text-orange-400"/> <span className="truncate">{tripType}</span></div>)}
+                <div className="px-2.5 py-1 rounded-full bg-black/58 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-lg"><Clock size={10} className="text-sky-400"/> {daysCount} Days</div>
             </div>
             
             {/* ⚡ RECTIFICATION 5: GIFT COUNT BADGE ⚡ */}
@@ -380,26 +379,30 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
                     <Gift size={10} className="fill-current"/> {giftCount}
                 </div>
             )}
-
-            {currentUser && currentUser.uid !== story.authorId && (
-                <button onClick={handleTrackClick} className={`absolute top-3 right-3 p-2 rounded-full backdrop-blur-md border transition-all z-20 ${isTracking ? "bg-orange-500 text-white border-orange-500" : "bg-black/40 text-white border-white/20 hover:bg-orange-500 hover:border-orange-500"}`}>{isTracking ? <UserCheck size={14} /> : <UserPlus size={14} />}</button>
-            )}
           </div>
 
           <div className="flex flex-col flex-1 p-5 pt-4">
-            <h3 className="text-lg font-bold text-white leading-snug mb-1 line-clamp-1 group-hover:text-orange-400 transition-colors">{story.title}</h3>
+            <h3 className="min-h-[3.25rem] text-lg font-bold text-white leading-snug mb-1 line-clamp-2 group-hover:text-orange-400 transition-colors">{story.title}</h3>
             <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium mb-4"><MapPin size={12} className="text-orange-500 shrink-0" /> <span className="truncate">{story.location || "Unknown Location"}</span></div>
-            <div className="grid grid-cols-3 gap-2 py-3 border-t border-slate-800 border-b border-slate-800 mb-4 bg-[#1f2937]/30 rounded-lg">
-                <div className="flex flex-col items-center justify-center"><span className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1"><Calendar size={10}/> When</span><span className="text-sm font-bold text-slate-200 truncate max-w-[80px]">{when}</span></div>
-                <div className="flex flex-col items-center justify-center border-l border-slate-700"><span className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1"><Wallet size={10}/> Cost</span><span className="text-sm font-bold text-slate-200">{cost}</span></div>
-                <div className="flex flex-col items-center justify-center border-l border-slate-700"><span className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1"><Mountain size={10}/> Level</span><span className={`text-sm font-bold ${level === 'Hard' ? 'text-red-400' : 'text-emerald-400'}`}>{level}</span></div>
+            <div className="grid grid-cols-3 gap-1.5 p-2.5 border border-slate-800/80 mb-4 bg-[#1f2937]/40 rounded-xl shadow-inner">
+                <div className="flex min-w-0 flex-col items-center justify-center px-1"><span className="text-[9px] text-slate-500 uppercase font-bold flex items-center gap-1"><Calendar size={10}/> When</span><span className="max-w-full truncate text-sm font-bold text-slate-200">{when}</span></div>
+                <div className="flex min-w-0 flex-col items-center justify-center border-l border-slate-700/80 px-1"><span className="text-[9px] text-slate-500 uppercase font-bold flex items-center gap-1"><Wallet size={10}/> Cost</span><span className="max-w-full truncate text-sm font-bold text-slate-200">{cost}</span></div>
+                <div className="flex min-w-0 flex-col items-center justify-center border-l border-slate-700/80 px-1"><span className="text-[9px] text-slate-500 uppercase font-bold flex items-center gap-1"><Mountain size={10}/> Level</span><span className={`max-w-full truncate text-sm font-bold ${level === 'Hard' ? 'text-red-400' : 'text-emerald-400'}`}>{level}</span></div>
             </div>
             <div className="mt-auto flex items-center justify-between pt-1">
-                <div className="flex items-center gap-2.5 cursor-pointer group/author" onClick={handleProfileClick}>
+                <div className="flex min-w-0 items-center gap-2.5 cursor-pointer group/author" onClick={handleProfileClick}>
                     <div className={`w-8 h-8 rounded-full overflow-hidden border border-slate-600 group-hover/author:border-orange-500 transition-colors ${isTracking ? 'ring-1 ring-orange-500' : ''}`}>{showImage ? (<img src={avatarUrl} onError={() => setImgError(true)} className="w-full h-full object-cover" alt={authorName} />) : (<div className="w-full h-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-white">{authorInitials}</div>)}</div>
-                    <div className="flex flex-col"><span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">{authorRank || "Scout"}</span><span className="text-xs font-bold text-slate-300 group-hover/author:text-white transition-colors">{authorName}</span></div>
+                    <div className="flex min-w-0 flex-col"><span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">{authorRank || "Scout"}</span><span className="truncate text-xs font-bold text-slate-300 group-hover/author:text-white transition-colors">{authorName}</span></div>
                 </div>
-                <button className="text-orange-500 hover:text-white hover:bg-orange-500 p-1.5 rounded-full transition-all"><ChevronRight size={18} /></button>
+                <div className="ml-2 flex shrink-0 items-center gap-2">
+                    {currentUser && currentUser.uid !== story.authorId && (
+                        <button onClick={handleTrackClick} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-all ${isTracking ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20" : "bg-white/5 text-slate-300 border-white/10 hover:bg-orange-500 hover:text-white hover:border-orange-500"}`} title={isTracking ? "Following traveler" : "Follow traveler"}>
+                            {isTracking ? <UserCheck size={13} /> : <UserPlus size={13} />}
+                            <span className="hidden 2xl:inline">{isTracking ? "Following" : "Track"}</span>
+                        </button>
+                    )}
+                    <button className="text-orange-500 hover:text-white hover:bg-orange-500 p-1.5 rounded-full transition-all" title="Open journey"><ChevronRight size={18} /></button>
+                </div>
             </div>
           </div>
       </div>

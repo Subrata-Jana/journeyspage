@@ -542,8 +542,11 @@ export default function StoryDetail() {
                         </ReviewSection>
                     </div>
 
-                    {/* 3. GRADIENT OVERLAY (Z-10) */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-[#0B0F19]/20 to-transparent pointer-events-none z-10" />
+                    {/* 3. READABILITY OVERLAYS */}
+                    <div className="absolute inset-0 bg-black/20 pointer-events-none z-10" />
+                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(11,15,25,0.58)_0%,_rgba(11,15,25,0.34)_34%,_rgba(11,15,25,0.12)_58%,_rgba(11,15,25,0.42)_100%)] pointer-events-none z-10" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-[#0B0F19]/45 to-transparent pointer-events-none z-10" />
+                    <div className="absolute inset-x-0 bottom-0 h-2/3 bg-[linear-gradient(to_top,_rgba(11,15,25,0.96),_rgba(11,15,25,0.58)_48%,_transparent)] pointer-events-none z-10" />
 
                     {/* 4. CONTENT (Z-50) */}
                     <div className="absolute bottom-0 inset-0 z-20 left-0 w-full p-4 md:p-12 lg:p-20 pb-16 lg:pb-40 max-w-7xl mx-auto flex flex-col items-center justify-end h-full text-center pointer-events-none">
@@ -551,23 +554,23 @@ export default function StoryDetail() {
 
                             {/* ⚡ UPDATED: Responsive flagPosition for Location */}
                             <ReviewSection id="location" label="Location" className="inline-block relative" flagPosition="right-0 -top-2 md:-right-3 md:-top-3">
-                                <div className="inline-flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white text-xs md:text-sm font-bold uppercase tracking-wider">
+                                <div className="inline-flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full bg-black/45 backdrop-blur-md border border-white/20 text-white text-xs md:text-sm font-bold uppercase tracking-wider shadow-xl">
                                     <MapPin size={12} md:size={14} className="text-orange-400" /> {story.location}
                                 </div>
                             </ReviewSection>
 
-                            <h1 className={`text-3xl md:text-6xl lg:text-8xl font-black text-white leading-[1.1] md:leading-[0.9] tracking-tight drop-shadow-2xl break-words max-w-full ${isBengaliTitle ? "font-bengali-title story-title-bengali" : ""}`}>
+                            <h1 className={`mx-auto max-w-6xl text-3xl md:text-6xl lg:text-8xl font-black text-white leading-[1.1] md:leading-[0.96] tracking-tight break-words [text-shadow:_0_8px_34px_rgb(0_0_0_/_72%),_0_2px_8px_rgb(0_0_0_/_88%)] ${isBengaliTitle ? "font-bengali-title story-title-bengali" : ""}`}>
                                 {story.title}
                             </h1>
 
-                            <div className="flex flex-wrap items-center justify-center gap-3 md:gap-8 text-white/90 font-medium text-xs md:text-lg pt-2 md:pt-4">
+                            <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3 text-white/95 font-medium text-xs md:text-base pt-2 md:pt-4 [text-shadow:_0_2px_8px_rgb(0_0_0_/_70%)]">
                                 <ReviewSection id="month" label="Month" className="inline-block relative">
-                                    <div className="flex items-center gap-1.5 md:gap-2.5"><Calendar size={14} md:size={20} className="text-orange-400" /> {story.month}</div>
+                                    <div className="flex items-center gap-1.5 md:gap-2 rounded-full bg-black/35 px-3 py-1.5 backdrop-blur-md border border-white/10"><Calendar size={14} md:size={18} className="text-orange-400" /> {story.month}</div>
                                 </ReviewSection>
 
                                 {categoryData && (
                                     <ReviewSection id="category" label="Category" className="inline-block relative">
-                                        <div className="flex items-center gap-2 px-3 py-1 rounded-full border border-white/20 backdrop-blur-md" style={{ backgroundColor: `${categoryColor}20` }}>
+                                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/20 backdrop-blur-md" style={{ backgroundColor: `${categoryColor}30` }}>
                                             {CategoryIcon && <CategoryIcon size={14} style={{ color: categoryColor }} />}
                                             <span style={{ color: categoryColor }} className="font-bold text-xs md:text-sm">{categoryData.label}</span>
                                         </div>
@@ -575,11 +578,11 @@ export default function StoryDetail() {
                                 )}
 
                                 <ReviewSection id="tripType" label="Trip Type" className="inline-block relative">
-                                    <div className="flex items-center gap-1.5 md:gap-2.5"><Flag size={14} md:size={20} className="text-emerald-400" /> {tripTypeData ? tripTypeData.label : story.tripType}</div>
+                                    <div className="flex items-center gap-1.5 md:gap-2 rounded-full bg-black/35 px-3 py-1.5 backdrop-blur-md border border-white/10"><Flag size={14} md:size={18} className="text-emerald-400" /> {tripTypeData ? tripTypeData.label : story.tripType}</div>
                                 </ReviewSection>
 
                                 <ReviewSection id="difficulty" label="Difficulty" className="inline-block relative">
-                                    <div className="flex items-center gap-1.5 md:gap-2.5"><Mountain size={14} md:size={20} className="text-rose-400" /> {difficultyData ? difficultyData.label : story.difficulty}</div>
+                                    <div className="flex items-center gap-1.5 md:gap-2 rounded-full bg-black/35 px-3 py-1.5 backdrop-blur-md border border-white/10"><Mountain size={14} md:size={18} className="text-rose-400" /> {difficultyData ? difficultyData.label : story.difficulty}</div>
                                 </ReviewSection>
                             </div>
                         </ReviewSection>
