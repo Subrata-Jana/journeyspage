@@ -221,6 +221,11 @@ export default function CreateStory() {
     return await getDownloadURL(storageRef);
   };
 
+  const getStoryImagePath = (activeStoryId, imagePath) => {
+    if (!user?.uid) throw new Error("You must be logged in to upload story images.");
+    return `stories/${user.uid}/${activeStoryId}/${imagePath}`;
+  };
+
   // Use normalized location metadata from the picker and only keep
   // the user-facing pieces we query/filter on at the top level.
   const handleLocationSelect = (selectedOption) => {
@@ -380,13 +385,17 @@ export default function CreateStory() {
 
       // 4. Handle Images
       let coverUrl = trip.coverImage;
-      if (trip.coverImageFile) coverUrl = await uploadImage(`stories/${activeId}/cover.jpg`, trip.coverImageFile);
+      if (trip.coverImageFile) {
+        coverUrl = await uploadImage(getStoryImagePath(activeId, "cover.jpg"), trip.coverImageFile);
+      }
 
       const finalGallery = [];
       for (let i = 0; i < trip.gallery.length; i++) {
         const item = trip.gallery[i];
         let itemUrl = item.url;
-        if (item.file) itemUrl = await uploadImage(`stories/${activeId}/gallery/${Date.now()}-${i}.jpg`, item.file);
+        if (item.file) {
+          itemUrl = await uploadImage(getStoryImagePath(activeId, `gallery/${Date.now()}-${i}.jpg`), item.file);
+        }
         finalGallery.push({ url: itemUrl, caption: item.caption || "", is360: item.is360 || false });
       }
 
@@ -466,7 +475,7 @@ export default function CreateStory() {
       for (let i = 0; i < trip.days.length; i++) {
         let dayImg = trip.days[i].imagePreview; 
         if (trip.days[i].imageFile) {
-            dayImg = await uploadImage(`stories/${activeId}/days/day-${i + 1}-${Date.now()}.jpg`, trip.days[i].imageFile);
+            dayImg = await uploadImage(getStoryImagePath(activeId, `days/day-${i + 1}-${Date.now()}.jpg`), trip.days[i].imageFile);
         }
         
         await addDoc(collection(db, "stories", activeId, "days"), { 
@@ -480,7 +489,12 @@ export default function CreateStory() {
       navigate("/dashboard", { replace: true });
     } catch (e) {
       console.error(e);
-      alert("Error: " + e.message);
+      const uploadDenied =
+        e?.code === "storage/unauthorized" ||
+        e?.message?.toLowerCase().includes("unauthorized");
+      alert(uploadDenied
+        ? "Image upload was blocked. Please make sure you are logged in and each image is a valid image under the upload size limit."
+        : "Error: " + e.message);
     } finally {
       setLoading(false);
       setIsSubmitting(false);

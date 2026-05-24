@@ -30,11 +30,6 @@ service firebase.storage {
       return isImageUpload() && request.resource.size <= maxBytes;
     }
 
-    function isStoryAuthor(storyId) {
-      return isSignedIn() &&
-        firestore.get(/databases/(default)/documents/stories/$(storyId)).data.authorId == request.auth.uid;
-    }
-
     match /site_assets/{fileName} {
       allow read: if true;
       allow write: if isAdmin();
@@ -50,9 +45,16 @@ service firebase.storage {
       allow write: if (isOwner(userId) || isAdmin()) && isReasonableImage(8 * 1024 * 1024);
     }
 
-    match /stories/{storyId}/{allPaths=**} {
+    match /stories/{userId}/{storyId}/{allPaths=**} {
       allow read: if true;
-      allow write: if (isStoryAuthor(storyId) || isAdmin()) && isReasonableImage(8 * 1024 * 1024);
+      allow create, update: if (isOwner(userId) || isAdmin()) && isReasonableImage(8 * 1024 * 1024);
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /stories/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && isReasonableImage(8 * 1024 * 1024);
+      allow delete: if isAdmin();
     }
   }
 }
