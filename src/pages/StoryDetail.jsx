@@ -543,14 +543,14 @@ export default function StoryDetail() {
                     </div>
 
                     {/* 3. READABILITY OVERLAYS */}
-                    <div className="absolute inset-0 bg-black/20 pointer-events-none z-10" />
-                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(11,15,25,0.58)_0%,_rgba(11,15,25,0.34)_34%,_rgba(11,15,25,0.12)_58%,_rgba(11,15,25,0.42)_100%)] pointer-events-none z-10" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-[#0B0F19]/45 to-transparent pointer-events-none z-10" />
-                    <div className="absolute inset-x-0 bottom-0 h-2/3 bg-[linear-gradient(to_top,_rgba(11,15,25,0.96),_rgba(11,15,25,0.58)_48%,_transparent)] pointer-events-none z-10" />
+                    <div className="absolute inset-0 bg-black/10 pointer-events-none z-10" />
+                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(11,15,25,0.2)_0%,_rgba(11,15,25,0.14)_38%,_transparent_64%)] pointer-events-none z-10" />
+                    <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/35 to-transparent pointer-events-none z-10" />
+                    <div className="absolute inset-x-0 bottom-0 h-[46%] bg-[linear-gradient(to_top,_rgba(11,15,25,0.94),_rgba(11,15,25,0.52)_42%,_rgba(11,15,25,0.12)_74%,_transparent)] pointer-events-none z-10" />
 
                     {/* 4. CONTENT (Z-50) */}
-                    <div className="absolute bottom-0 inset-0 z-20 left-0 w-full p-4 md:p-12 lg:p-20 pb-16 lg:pb-40 max-w-7xl mx-auto flex flex-col items-center justify-end h-full text-center pointer-events-none">
-                        <ReviewSection id="title" label="Title & Meta" className="pointer-events-auto relative space-y-4 md:space-y-6 w-full animate-in fade-in slide-in-from-bottom-12 duration-1000">
+                    <div className="absolute bottom-0 inset-0 z-20 left-0 w-full p-4 md:p-12 lg:p-20 pb-10 md:pb-14 lg:pb-24 max-w-7xl mx-auto flex flex-col items-center justify-end h-full text-center pointer-events-none">
+                        <ReviewSection id="title" label="Title & Meta" className="pointer-events-auto relative space-y-3 md:space-y-4 w-full animate-in fade-in slide-in-from-bottom-12 duration-1000">
 
                             {/* ⚡ UPDATED: Responsive flagPosition for Location */}
                             <ReviewSection id="location" label="Location" className="inline-block relative" flagPosition="right-0 -top-2 md:-right-3 md:-top-3">
@@ -559,11 +559,11 @@ export default function StoryDetail() {
                                 </div>
                             </ReviewSection>
 
-                            <h1 className={`mx-auto max-w-6xl text-3xl md:text-6xl lg:text-8xl font-black text-white leading-[1.1] md:leading-[0.96] tracking-tight break-words [text-shadow:_0_8px_34px_rgb(0_0_0_/_72%),_0_2px_8px_rgb(0_0_0_/_88%)] ${isBengaliTitle ? "font-bengali-title story-title-bengali" : ""}`}>
+                            <h1 className={`mx-auto max-w-6xl text-3xl md:text-6xl lg:text-8xl font-black text-white leading-[1.1] md:leading-[0.98] tracking-tight break-words [text-shadow:_0_10px_32px_rgb(0_0_0_/_76%),_0_2px_6px_rgb(0_0_0_/_90%)] ${isBengaliTitle ? "font-bengali-title story-title-bengali" : ""}`}>
                                 {story.title}
                             </h1>
 
-                            <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3 text-white/95 font-medium text-xs md:text-base pt-2 md:pt-4 [text-shadow:_0_2px_8px_rgb(0_0_0_/_70%)]">
+                            <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3 text-white/95 font-medium text-xs md:text-base pt-1 md:pt-2 [text-shadow:_0_2px_8px_rgb(0_0_0_/_70%)]">
                                 <ReviewSection id="month" label="Month" className="inline-block relative">
                                     <div className="flex items-center gap-1.5 md:gap-2 rounded-full bg-black/35 px-3 py-1.5 backdrop-blur-md border border-white/10"><Calendar size={14} md:size={18} className="text-orange-400" /> {story.month}</div>
                                 </ReviewSection>
