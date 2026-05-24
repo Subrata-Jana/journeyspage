@@ -68,6 +68,8 @@ const COLOR_PALETTE = [
   { name: "pink", hex: "#ec4899" }, { name: "rose", hex: "#f43f5e" }
 ];
 
+const hasBengaliText = (value = "") => /[\u0980-\u09FF]/.test(value);
+
 export default function AdminPanel() {
   const { user, userProfile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -572,7 +574,14 @@ function StoryModeration({ isDark, user, userProfile, isAdminUser }) {
 
             <div className={`rounded-2xl border overflow-hidden shadow-2xl ${cardClass}`}>
                 <div className="overflow-x-auto">
-                <table className="w-full text-left">
+                <table className="w-full min-w-[980px] table-fixed text-left">
+                    <colgroup>
+                        <col className="w-[32%]" />
+                        <col className="w-[15%]" />
+                        <col className="w-[14%]" />
+                        <col className="w-[20%]" />
+                        <col className="w-[19%]" />
+                    </colgroup>
                     <thead className={`text-xs uppercase font-bold ${isDark ? 'bg-white/5 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
                         <tr>
                             <th className="p-4">Story & Revisions</th>
@@ -588,45 +597,51 @@ function StoryModeration({ isDark, user, userProfile, isAdminUser }) {
                         
                         {filteredStories.map(story => (
                             <tr key={story.id} className={`transition-colors ${isDark ? 'hover:bg-white/[0.02]' : 'hover:bg-slate-50'}`}>
-                                <td className="p-4 max-w-[250px]">
+                                <td className="p-4 align-middle">
                                     <div className="flex items-center gap-3">
                                         <div className="w-12 h-12 rounded-lg bg-slate-800 shrink-0 overflow-hidden relative">
                                             {story.coverImage ? <img src={story.coverImage} className="w-full h-full object-cover" alt=""/> : <div className="w-full h-full flex items-center justify-center text-slate-500"><ImageIcon size={16}/></div>}
                                         </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <div className={`font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{story.title || "Untitled"}</div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex min-w-0 items-start gap-2">
+                                                <div
+                                                    lang={hasBengaliText(story.title) ? "bn" : undefined}
+                                                    className={`admin-story-title min-w-0 flex-1 font-bold ${hasBengaliText(story.title) ? "font-bengali-title" : ""} ${isDark ? 'text-white' : 'text-slate-900'}`}
+                                                    title={story.title || "Untitled"}
+                                                >
+                                                    {story.title || "Untitled"}
+                                                </div>
                                                 {story.revisionCount > 0 && (
-                                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-white flex items-center gap-1" title="Revision Count">
+                                                    <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-white inline-flex items-center gap-1" title="Revision Count">
                                                         <HistoryIcon size={10}/> v{story.revisionCount}
                                                     </span>
                                                 )}
                                             </div>
-                                            <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                                                <MapPin size={10}/> {story.location || "Unknown"}
+                                            <div className="mt-1 flex min-w-0 items-center gap-1 text-xs text-slate-500">
+                                                <MapPin size={10} className="shrink-0"/> <span className="truncate">{story.location || "Unknown"}</span>
                                             </div>
                                         </div>
                                     </div>
                                 </td>
-                                <td className={`p-4 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-white font-bold overflow-hidden">
+                                <td className={`p-4 align-middle ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                    <div className="flex min-w-0 items-center gap-2">
+                                        <div className="w-6 h-6 shrink-0 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-white font-bold overflow-hidden">
                                             {story.authorName?.[0] || <User size={12}/>}
                                         </div>
-                                        {story.authorName || "Unknown"}
+                                        <span className="truncate">{story.authorName || "Unknown"}</span>
                                     </div>
                                 </td>
-                                <td className="p-4">
+                                <td className="p-4 align-middle">
                                     <div className="flex flex-col gap-1">
-                                        <div className="text-xs font-medium text-emerald-500 flex items-center gap-1" title="Last Updated">
-                                            <ArrowUp size={10}/> Last: {story.updatedAt?.seconds ? new Date(story.updatedAt.seconds * 1000).toLocaleDateString() : "N/A"}
+                                        <div className="flex items-start gap-1 text-xs font-medium text-emerald-500" title="Last Updated">
+                                            <ArrowUp size={10} className="mt-0.5 shrink-0"/> <span>Last: {story.updatedAt?.seconds ? new Date(story.updatedAt.seconds * 1000).toLocaleDateString() : "N/A"}</span>
                                         </div>
-                                        <div className="text-[10px] text-slate-500 flex items-center gap-1" title="First Submitted">
-                                            <ArrowDown size={10}/> First: {story.createdAt?.seconds ? new Date(story.createdAt.seconds * 1000).toLocaleDateString() : "N/A"}
+                                        <div className="flex items-start gap-1 text-[10px] text-slate-500" title="First Submitted">
+                                            <ArrowDown size={10} className="mt-0.5 shrink-0"/> <span>First: {story.createdAt?.seconds ? new Date(story.createdAt.seconds * 1000).toLocaleDateString() : "N/A"}</span>
                                         </div>
                                     </div>
                                 </td>
-                                <td className="p-4">
+                                <td className="p-4 align-middle">
                                     <div className="flex flex-col items-start gap-1">
                                         <span className={`px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wide inline-flex items-center gap-1.5
                                             ${getStoryStatus(story) === 'approved' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
@@ -642,14 +657,14 @@ function StoryModeration({ isDark, user, userProfile, isAdminUser }) {
                                                 {getStoryStatus(story)}
                                         </span>
                                         {getStoryStatus(story) === 'pending' && (
-                                            <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1 ml-1">
-                                                ⏳ Waited: {formatTimeAgo(story.updatedAt)}
+                                            <span className="ml-1 flex items-start gap-1 text-[10px] text-slate-400">
+                                                <Clock size={10} className="mt-0.5 shrink-0" /> <span>Waited: {formatTimeAgo(story.updatedAt)}</span>
                                             </span>
                                         )}
                                     </div>
                                 </td>
-                                <td className="p-4 text-right">
-                                    <div className="flex justify-end gap-2">
+                                <td className="p-4 text-right align-middle">
+                                    <div className="flex flex-wrap justify-end gap-2">
                                         <button 
                                             onClick={() => handleReview(story)} 
                                             className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-lg flex items-center gap-2 font-bold transition-all hover:scale-105 text-xs"
@@ -881,7 +896,13 @@ function EditorRoleManager({ isDark, currentUser }) {
 
             <div className={`rounded-2xl border overflow-hidden shadow-2xl ${cardClass}`}>
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
+                    <table className="w-full min-w-[760px] table-fixed text-left">
+                        <colgroup>
+                            <col className="w-[34%]" />
+                            <col className="w-[18%]" />
+                            <col className="w-[30%]" />
+                            <col className="w-[18%]" />
+                        </colgroup>
                         <thead className={`text-xs uppercase font-bold ${isDark ? 'bg-white/5 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
                             <tr>
                                 <th className="p-4">User</th>
@@ -900,16 +921,16 @@ function EditorRoleManager({ isDark, currentUser }) {
                                 const isSelf = item.id === currentUser?.uid;
                                 return (
                                     <tr key={item.id} className={`${isDark ? 'hover:bg-white/[0.02]' : 'hover:bg-slate-50'} transition-colors`}>
-                                        <td className="p-4">
-                                            <div className="flex items-center gap-3 min-w-[220px]">
-                                                <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center text-white font-bold">
+                                        <td className="p-4 align-middle">
+                                            <div className="flex min-w-0 items-center gap-3">
+                                                <div className="w-10 h-10 shrink-0 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center text-white font-bold">
                                                     {item.photoURL || item.avatarUrl ? (
                                                         <img src={item.photoURL || item.avatarUrl} alt="" className="w-full h-full object-cover" />
                                                     ) : (
                                                         (item.name || item.displayName || item.email || "U").slice(0, 1).toUpperCase()
                                                     )}
                                                 </div>
-                                                <div className="min-w-0">
+                                                <div className="min-w-0 flex-1">
                                                     <div className={`font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
                                                         {item.name || item.displayName || "Unnamed User"}
                                                     </div>
@@ -917,7 +938,7 @@ function EditorRoleManager({ isDark, currentUser }) {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="p-4">
+                                        <td className="p-4 align-middle">
                                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
                                                 isAdminAccount
                                                     ? "bg-purple-500/10 text-purple-500"
@@ -929,18 +950,18 @@ function EditorRoleManager({ isDark, currentUser }) {
                                                 {isAdminAccount ? "Admin" : isEditor ? "Editor" : "User"}
                                             </span>
                                         </td>
-                                        <td className="p-4 text-xs text-slate-500 max-w-xs">
+                                        <td className="p-4 align-middle text-xs leading-relaxed text-slate-500">
                                             {isAdminAccount
                                                 ? "Full admin access."
                                                 : isEditor
                                                     ? "Can review pending stories except their own."
                                                     : "No moderation permissions."}
                                         </td>
-                                        <td className="p-4 text-right">
+                                        <td className="p-4 text-right align-middle">
                                             <button
                                                 onClick={() => setEditorRole(item, !isEditor)}
                                                 disabled={isAdminAccount || isSelf}
-                                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                                                className={`whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                                                     isAdminAccount || isSelf
                                                         ? "bg-slate-500/10 text-slate-500 cursor-not-allowed"
                                                         : isEditor

@@ -84,6 +84,21 @@
   line-height: 1.12;
 }
 
+.admin-story-title {
+  display: -webkit-box;
+  line-height: 1.25;
+  max-height: 2.5em;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.admin-story-title.font-bengali-title {
+  line-height: 1.35;
+  max-height: 2.7em;
+}
+
 @media (min-width: 768px) {
   .story-title-bengali {
     line-height: 1.06;
