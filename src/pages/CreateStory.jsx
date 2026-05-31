@@ -20,7 +20,7 @@ import {
   orderBy,
   increment 
 } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import imageCompression from 'browser-image-compression';
 
 import { db, storage } from "../services/firebase";
@@ -118,7 +118,7 @@ export default function CreateStory() {
     country: "", // 🆕 Added
     state: "",   // 🆕 Added
     locationData: null,
-    month: "", totalCost: "",
+    month: "", tripDurationDays: "", totalCost: "", budgetBasis: "total_trip",
     tripType: "", difficulty: "", category: "",
     aboutPlace: "", specialNote: "",
     enableYoutube: false, youtubeLink: "",
@@ -181,7 +181,10 @@ export default function CreateStory() {
           country: data.country || "", // Load Country
           state: data.state || "",     // Load State
           locationData: data.locationData || null, // Load location data
-          month: data.month || "", totalCost: data.totalCost || "",
+          month: data.month || "",
+          tripDurationDays: data.tripDurationDays || data.durationDays || days.length || "",
+          totalCost: data.totalCost || "",
+          budgetBasis: data.budgetBasis || "total_trip",
           tripType: data.tripType || "", difficulty: data.difficulty || "", category: data.category || "",
           aboutPlace: data.aboutPlace || "", specialNote: data.specialNote || "",
           youtubeLink: data.youtubeLink || "", enableYoutube: !!data.youtubeLink,
@@ -217,7 +220,10 @@ export default function CreateStory() {
 
   const uploadImage = async (path, file) => {
     const storageRef = ref(storage, path);
-    await uploadBytes(storageRef, file);
+    await uploadBytes(storageRef, file, {
+      cacheControl: "public,max-age=31536000,immutable",
+      contentType: file.type || "image/jpeg",
+    });
     return await getDownloadURL(storageRef);
   };
 
@@ -318,7 +324,7 @@ export default function CreateStory() {
       const days = [...trip.days]; days[index].imageFile = null; days[index].imagePreview = null; days[index].imageUrl = ""; days[index].imageCaption = ""; setTrip(p => ({ ...p, days })); 
   };
   const addDay = () => { 
-      const id = trip.days.length + 1; setTrip(p => ({ ...p, days: [...p.days, { id, dayNumber: id, title: "", story: "", departure: "", destination: "", food: "", stay: "", travel: "", highlight: "", imageFile: null, imagePreview: null, imageCaption: "" }] })); setExpandedDays([id]); 
+      const id = Date.now(); const nextDayNumber = Math.max(0, ...trip.days.map(day => Number(day.dayNumber) || 0)) + 1; setTrip(p => ({ ...p, days: [...p.days, { id, dayNumber: nextDayNumber, title: "", story: "", departure: "", destination: "", food: "", stay: "", travel: "", highlight: "", imageFile: null, imagePreview: null, imageCaption: "" }] })); setExpandedDays([id]);
   };
   const updateDay = (index, field, value) => { 
       trackChange(getDayFeedbackKey(trip.days[index], index));
@@ -328,9 +334,14 @@ export default function CreateStory() {
 
   const validateForPublish = () => {
     const errors = [];
+    const duration = Number(trip.tripDurationDays);
+    const journeyDays = trip.days.map(day => Number(day.dayNumber));
     if (!trip.title?.trim()) errors.push("Story Title");
     if (!trip.location?.trim()) errors.push("Location");
-    if (!trip.days.length) errors.push("Minimum 1 Day");
+    if (!duration || duration < 1) errors.push("Trip duration");
+    if (!trip.days.length) errors.push("Minimum 1 itinerary entry");
+    if (journeyDays.some(day => !day || day < 1 || day > duration)) errors.push("Each itinerary entry must use a valid journey day");
+    if (new Set(journeyDays).size !== journeyDays.length) errors.push("Each itinerary entry must use a different journey day");
     return errors;
   };
 
@@ -353,12 +364,9 @@ export default function CreateStory() {
 
     // 2. Determine Status
     let targetStatus = 'draft';
-    let isPublished = false;
-
     if (publish) {
         // If "Publish" or "Submit Revisions" is clicked -> Send to Pending
         targetStatus = 'pending';
-        isPublished = false; // "Published" is false until Admin approves it
     } else {
         // If "Save Draft" is clicked
         if (storyStatus === 'returned') {
@@ -384,6 +392,10 @@ export default function CreateStory() {
       }
 
       // 4. Handle Images
+      const previousAssetUrls = [
+        ...trip.gallery.map(item => item.url).filter(Boolean),
+        ...trip.days.map(day => day.imageUrl || day.imagePreview).filter(Boolean),
+      ];
       let coverUrl = trip.coverImage;
       if (trip.coverImageFile) {
         coverUrl = await uploadImage(getStoryImagePath(activeId, "cover.jpg"), trip.coverImageFile);
@@ -419,7 +431,11 @@ export default function CreateStory() {
         country: trip.country || "",
         state: trip.state || "",
         locationData: trip.locationData || null,
-        month: trip.month, totalCost: trip.totalCost,
+        month: trip.month,
+        tripDurationDays: Math.max(1, Number(trip.tripDurationDays) || trip.days.length || 1),
+        itineraryEntryCount: trip.days.length,
+        totalCost: trip.totalCost,
+        budgetBasis: trip.budgetBasis || "total_trip",
         tripType: trip.tripType, difficulty: trip.difficulty, category: trip.category,
         aboutPlace: trip.aboutPlace, specialNote: trip.specialNote,
         youtubeLink: trip.enableYoutube ? trip.youtubeLink : "",
@@ -453,21 +469,7 @@ export default function CreateStory() {
           updatePayload.revisionCount = increment(1);
       }
 
-      // 6. Update Firestore
-      await updateDoc(doc(db, "stories", activeId), updatePayload);
-
-      // 7. Notify Admin
-      if (publish || isReturned) {
-          await notifyStorySubmittedForReview({
-              storyId: activeId,
-              title: trip.title,
-              authorId: user.uid,
-              authorName: userProfile?.name || "An author",
-              isResubmission: storyStatus === "returned",
-          });
-      }
-
-      // 8. Replace Days Subcollection
+      // Replace itinerary entries while the parent story is still editable.
       const oldDays = await getDocs(collection(db, "stories", activeId, "days"));
       const deletePromises = oldDays.docs.map(d => deleteDoc(d.ref));
       await Promise.all(deletePromises);
@@ -482,8 +484,31 @@ export default function CreateStory() {
             title: trip.days[i].title, story: trip.days[i].story, 
             departure: trip.days[i].departure, destination: trip.days[i].destination,
             food: trip.days[i].food, stay: trip.days[i].stay, highlight: trip.days[i].highlight,
-            imageUrl: dayImg || "", imageCaption: trip.days[i].imageCaption || "", dayNumber: i + 1, 
+            imageUrl: dayImg || "", imageCaption: trip.days[i].imageCaption || "", dayNumber: Number(trip.days[i].dayNumber) || i + 1,
         });
+      }
+
+      const retainedAssetUrls = new Set([
+        ...finalGallery.map(item => item.url).filter(Boolean),
+        ...trip.days.map(day => day.imageFile ? null : (day.imageUrl || day.imagePreview)).filter(Boolean),
+      ]);
+      await Promise.allSettled(
+        previousAssetUrls
+          .filter(url => !retainedAssetUrls.has(url))
+          .map(url => deleteObject(ref(storage, url)))
+      );
+
+      // Transition to pending only after every itinerary entry and asset cleanup is done.
+      await updateDoc(doc(db, "stories", activeId), updatePayload);
+
+      if (publish || isReturned) {
+          await notifyStorySubmittedForReview({
+              storyId: activeId,
+              title: trip.title,
+              authorId: user.uid,
+              authorName: userProfile?.name || "An author",
+              isResubmission: storyStatus === "returned",
+          });
       }
 
       navigate("/dashboard", { replace: true });
@@ -600,7 +625,20 @@ export default function CreateStory() {
                   tooltip="Select the start date of your trip (DD/MM/YYYY)" 
               />
 
-              <InputGroup label="Total Cost (₹)" value={trip.totalCost} onChange={e => {setTrip({ ...trip, totalCost: e.target.value }); trackChange('cost');}} disabled={isFieldLocked('cost')} placeholder="e.g. 15000" type="number" feedback={feedback['cost']} isModified={modifiedFields['cost']} />
+              <InputGroup label="Total Trip Duration (days)" value={trip.tripDurationDays} onChange={e => {setTrip({ ...trip, tripDurationDays: e.target.value }); trackChange('duration');}} disabled={isFieldLocked('duration')} placeholder="e.g. 4" type="number" min="1" feedback={feedback['duration']} isModified={modifiedFields['duration']} />
+
+              <InputGroup label="Estimated Budget (INR)" value={trip.totalCost} onChange={e => {setTrip({ ...trip, totalCost: e.target.value }); trackChange('cost');}} disabled={isFieldLocked('cost')} placeholder="e.g. 15000" type="number" min="0" feedback={feedback['cost']} isModified={modifiedFields['cost']} />
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400 ml-1">Budget Applies To</label>
+                <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/5 p-1">
+                  {[{ value: "total_trip", label: "Whole Trip" }, { value: "per_person", label: "Per Person" }].map((option) => (
+                    <button key={option.value} type="button" disabled={isFieldLocked('cost')} onClick={() => { setTrip({ ...trip, budgetBasis: option.value }); trackChange('cost'); }} className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${trip.budgetBasis === option.value ? "bg-white dark:bg-white/10 text-orange-600 dark:text-orange-400 shadow-sm" : "text-slate-500 dark:text-slate-400"}`}>
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               
               <CustomSelect label="Trip Type" value={trip.tripType} onChange={(val) => {setTrip({ ...trip, tripType: val }); trackChange('tripType');}} options={tripTypes} disabled={isFieldLocked('tripType')} placeholder="Select Type..." feedback={feedback['tripType']} isModified={modifiedFields['tripType']} />
               <CustomSelect label="Difficulty" value={trip.difficulty} onChange={(val) => {setTrip({ ...trip, difficulty: val }); trackChange('difficulty');}} options={difficulties} disabled={isFieldLocked('difficulty')} placeholder="Select Level..." feedback={feedback['difficulty']} isModified={modifiedFields['difficulty']} />
@@ -654,8 +692,9 @@ export default function CreateStory() {
           {/* --- ITINERARY --- */}
           <div className="space-y-6">
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white/90 flex items-center gap-2">
-              <span className="w-1 h-6 bg-green-500 rounded-full" /> Itinerary
+              <span className="w-1 h-6 bg-green-500 rounded-full" /> Itinerary Highlights
             </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Add the journey days worth documenting. Your total trip duration can be longer than this highlight list.</p>
             <div className="space-y-4">
               <AnimatePresence>
                 {trip.days.map((day, index) => {
@@ -668,8 +707,8 @@ export default function CreateStory() {
                         <motion.div key={day.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`group bg-slate-50 dark:bg-slate-900/50 border rounded-2xl overflow-hidden transition-all ${dayFeedback ? (isModified ? "border-amber-500 ring-1 ring-amber-500/20" : "border-red-500 ring-1 ring-red-500/20") : "border-slate-200 dark:border-white/5"} ${isDayLocked && isReturned ? "opacity-60 grayscale-[50%]" : ""}`}>
                             <div onClick={() => setExpandedDays(p => p.includes(day.id) ? p.filter(d => d !== day.id) : [...p, day.id])} className="p-4 flex items-center justify-between cursor-pointer select-none">
                                 <div className="flex items-center gap-4">
-                                    <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-white/5 flex items-center justify-center text-sm font-bold">{index + 1}</div>
-                                    <span className="font-medium text-slate-900 dark:text-white/90">{day.title || `Day ${index + 1}`}</span>
+                                    <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-white/5 flex items-center justify-center text-sm font-bold">{day.dayNumber || index + 1}</div>
+                                    <span className="font-medium text-slate-900 dark:text-white/90">{day.title || `Journey Day ${day.dayNumber || index + 1}`}</span>
                                     {isDayLocked && isReturned && <Lock size={14} className="text-slate-400"/>}
                                     {dayFeedback && (
                                         <span className={`text-xs font-bold px-2 py-0.5 rounded flex items-center gap-1 animate-pulse ${isModified ? 'text-amber-600 bg-amber-100 dark:bg-amber-500/10' : 'text-red-500 bg-red-100 dark:bg-red-500/10'}`}>
@@ -706,6 +745,7 @@ export default function CreateStory() {
                                         {day.imagePreview && <input className="w-full bg-slate-100 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-white" placeholder="Caption..." value={day.imageCaption} disabled={isDayLocked} onChange={(e) => updateDay(index, "imageCaption", e.target.value)} />}
                                     </div>
                                     <div className="md:col-span-8 space-y-4">
+                                        <InputGroup label="Journey Day" value={day.dayNumber || ""} disabled={isDayLocked} onChange={e => updateDay(index, "dayNumber", e.target.value)} type="number" min="1" />
                                         <InputGroup label="Title" value={day.title} disabled={isDayLocked} onChange={e => updateDay(index, "title", e.target.value)} />
                                         <div className="grid grid-cols-2 gap-4">
                                             <InputGroup label="From" value={day.departure} disabled={isDayLocked} onChange={e => updateDay(index, "departure", e.target.value)} />
@@ -726,7 +766,7 @@ export default function CreateStory() {
               </AnimatePresence>
             </div>
             {!isReturned && !isFieldLocked('all') && (
-              <button onClick={addDay} className="w-full py-3 rounded-xl border border-dashed border-slate-300 dark:border-white/20 text-slate-500 hover:bg-slate-100 flex items-center justify-center gap-2"><Plus size={18} /> Add Day</button>
+              <button onClick={addDay} className="w-full py-3 rounded-xl border border-dashed border-slate-300 dark:border-white/20 text-slate-500 hover:bg-slate-100 flex items-center justify-center gap-2"><Plus size={18} /> Add Itinerary Highlight</button>
             )}
           </div>
 

@@ -29,11 +29,13 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import imageCompression from "browser-image-compression";
 
 import { auth, db, storage } from "../services/firebase";
 import {
   buildAvatarFields,
+  getProfilePhotoUrl,
   normalizeUserProfile,
 } from "../utils/userProfile";
 
@@ -169,20 +171,38 @@ export const AuthProvider = ({ children }) => {
       const filename = `${Date.now()}-${file.name}`;
       const path = `avatars/${user.uid}/${filename}`;
       const storageRef = ref(storage, path);
+      const previousUrl = getProfilePhotoUrl(userProfile);
+      const optimizedFile = await imageCompression(file, {
+        maxSizeMB: 0.8,
+        maxWidthOrHeight: 1024,
+        useWebWorker: true,
+        fileType: "image/jpeg",
+        initialQuality: 0.86,
+      });
 
       setAvatarUploadProgress(0);
 
-      const snap = await uploadBytes(storageRef, file);
+      const snap = await uploadBytes(storageRef, optimizedFile, {
+        cacheControl: "public,max-age=31536000,immutable",
+        contentType: optimizedFile.type || "image/jpeg",
+      });
       const url = await getDownloadURL(snap.ref);
 
       const avatarFields = buildAvatarFields(url);
       await updateDoc(doc(db, "users", user.uid), avatarFields);
+      if (previousUrl && previousUrl !== url) {
+        try {
+          await deleteObject(ref(storage, previousUrl));
+        } catch {
+          // A legacy photo can be external or already removed.
+        }
+      }
       setUserProfile((p) => normalizeUserProfile({ ...p, ...avatarFields }));
 
       setAvatarUploadProgress(null);
       return url;
     },
-    [user]
+    [user, userProfile]
   );
 
   const updateProfileName = useCallback(

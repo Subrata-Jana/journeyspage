@@ -1,6 +1,5 @@
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "./firebase";
-import { syncUserGamification } from "./gamificationService";
 import { sendNotification } from "./notificationService";
 
 export const normalizeFeedbackMap = (feedback = {}) =>
@@ -141,13 +140,6 @@ export async function approveStoryReview({
     reviewedAt: serverTimestamp(),
   };
   await updateDoc(doc(db, "stories", storyId), payload);
-  if (authorId) {
-    const syncResult = await syncUserGamification(authorId);
-    if (!syncResult?.success) {
-      console.warn("Gamification sync skipped after approval:", syncResult?.error);
-    }
-  }
-
   if (authorId) {
     await sendNotification({
       recipientId: authorId,

@@ -3,7 +3,8 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { db, storage } from "../services/firebase";
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import imageCompression from "browser-image-compression";
 import { 
   Camera, MapPin, Award, Edit2, Globe, BookOpen, Heart, 
   Share2, Save, User, Link as LinkIcon, ArrowLeft,
@@ -217,8 +218,19 @@ export default function Profile() {
     if (!file) return;
     const toastId = toast.loading("Uploading image...");
     try {
+      const previousUrl = profileData[field] || "";
+      const optimizedFile = await imageCompression(file, {
+        maxSizeMB: field === "photoURL" ? 0.8 : 1.5,
+        maxWidthOrHeight: field === "photoURL" ? 1024 : 1920,
+        useWebWorker: true,
+        fileType: "image/jpeg",
+        initialQuality: 0.86,
+      });
       const storageRef = ref(storage, `users/${targetId}/${field}_${Date.now()}`);
-      await uploadBytes(storageRef, file);
+      await uploadBytes(storageRef, optimizedFile, {
+        cacheControl: "public,max-age=31536000,immutable",
+        contentType: optimizedFile.type || "image/jpeg",
+      });
       const url = await getDownloadURL(storageRef);
       const imageFields =
         field === "photoURL"
@@ -226,6 +238,13 @@ export default function Profile() {
           : { [field]: url };
       setProfileData(prev => ({ ...prev, [field]: url }));
       await setDoc(doc(db, "users", targetId), imageFields, { merge: true });
+      if (previousUrl && previousUrl !== url) {
+        try {
+          await deleteObject(ref(storage, previousUrl));
+        } catch {
+          // A legacy profile image can be external or already removed.
+        }
+      }
       toast.success("Image updated!", { id: toastId });
     } catch (error) {
       console.error(error);

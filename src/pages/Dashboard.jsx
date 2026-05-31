@@ -96,7 +96,7 @@ export default function Dashboard() {
     return () => unsub();
   }, []);
 
-  useEffect(() => { if (user?.uid) processUserSession(user.uid); }, [user]);
+  useEffect(() => { if (user?.uid) processUserSession(); }, [user]);
 
   useEffect(() => {
     if (!user?.uid) return;

@@ -32,8 +32,33 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isNotChangingAdminRole() {
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(["role"]);
+    function isCreatingSafeUserProfile() {
+      return !request.resource.data.keys().hasAny(["role"]) ||
+        request.resource.data.role == "user";
+    }
+
+    function isUpdatingOwnProfile(userId) {
+      return isOwner(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "name",
+          "email",
+          "photoURL",
+          "avatarUrl",
+          "profilePhoto",
+          "avatar",
+          "coverURL",
+          "bio",
+          "location",
+          "website",
+          "facebook",
+          "instagram",
+          "twitter",
+          "youtube",
+          "interests",
+          "darkMode",
+          "onboarded",
+          "updatedAt"
+        ]);
     }
 
     function storyData(storyId) {
@@ -72,27 +97,46 @@ service cloud.firestore {
         ]);
     }
 
+    function authorStoryFields() {
+      return [
+        "title",
+        "location",
+        "country",
+        "state",
+        "locationData",
+        "month",
+        "tripDurationDays",
+        "itineraryEntryCount",
+        "totalCost",
+        "budgetBasis",
+        "tripType",
+        "difficulty",
+        "category",
+        "aboutPlace",
+        "specialNote",
+        "youtubeLink",
+        "authorId",
+        "authorName",
+        "authorPhoto",
+        "authorRank",
+        "published",
+        "status",
+        "coverImage",
+        "coverImageCaption",
+        "gallery",
+        "updatedAt",
+        "modifiedFlags",
+        "feedback",
+        "contentConsent",
+        "revisionCount"
+      ];
+    }
+
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create: if isOwner(userId);
+      allow create: if isOwner(userId) && isCreatingSafeUserProfile();
 
-      allow update: if isAdmin() || (isOwner(userId) && isNotChangingAdminRole()) || (
-        isSignedIn() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          "trophies",
-          "xp",
-          "inventory",
-          "stats",
-          "badges",
-          "level",
-          "points",
-          "trackers",
-          "trackersCount",
-          "tracking",
-          "currentRank",
-          "lastLoginDate"
-        ])
-      );
+      allow update: if isAdmin() || isUpdatingOwnProfile(userId);
     }
 
     match /notifications/{noteId} {
@@ -103,14 +147,44 @@ service cloud.firestore {
         isAdmin()
       );
 
-      allow create: if isSignedIn();
+      allow create: if isAdmin() || (
+        isSignedIn() &&
+        request.resource.data.recipientId != "broadcast" &&
+        request.resource.data.keys().hasOnly([
+          "recipientId",
+          "type",
+          "title",
+          "message",
+          "link",
+          "actorId",
+          "actorName",
+          "entityType",
+          "entityId",
+          "channel",
+          "meta",
+          "read",
+          "createdAt"
+        ]) &&
+        request.resource.data.read == false &&
+        (
+          (
+            request.resource.data.recipientId == "admin" &&
+            request.resource.data.channel == "review" &&
+            request.resource.data.entityType == "story" &&
+            storyData(request.resource.data.entityId).authorId == request.auth.uid
+          ) ||
+          (
+            request.resource.data.recipientId != "admin" &&
+            request.resource.data.actorId == request.auth.uid
+          ) ||
+          isReviewStaff()
+        )
+      );
 
       allow update: if isSignedIn() && (
-        isAdmin() ||
-        resource.data.recipientId == request.auth.uid ||
-        resource.data.recipientId == "broadcast" ||
-        (resource.data.recipientId == "admin" && isAdmin())
-      );
+        isAdmin() || resource.data.recipientId == request.auth.uid ||
+        (resource.data.recipientId == "admin" && isReviewStaff())
+      ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"]);
 
       allow delete: if isAdmin() || (
         isSignedIn() && resource.data.recipientId == request.auth.uid
@@ -125,7 +199,8 @@ service cloud.firestore {
 
       allow create: if isSignedIn() &&
         request.resource.data.authorId == request.auth.uid &&
-        request.resource.data.status == "draft";
+        request.resource.data.status == "draft" &&
+        (!request.resource.data.keys().hasAny(["published"]) || request.resource.data.published == false);
 
       allow update: if
         isAdmin() ||
@@ -136,21 +211,9 @@ service cloud.firestore {
           request.resource.data.authorId == resource.data.authorId &&
           request.resource.data.createdAt == resource.data.createdAt &&
           resource.data.status in ["draft", "returned"] &&
-          request.resource.data.status in ["draft", "pending", "returned"]
-        ) ||
-        (
-          isSignedIn() &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            "likes",
-            "likeCount",
-            "views",
-            "shares",
-            "shareCount",
-            "sharedBy",
-            "tributeCount",
-            "giftCount",
-            "trendingScore"
-          ])
+          request.resource.data.status in ["draft", "pending", "returned"] &&
+          request.resource.data.published == false &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(authorStoryFields())
         );
 
       allow delete: if isAdmin() || (
@@ -162,18 +225,42 @@ service cloud.firestore {
       match /days/{dayId} {
         allow read: if canReadStory(storyId);
         allow write: if isAdmin() || (
-          isSignedIn() && storyData(storyId).authorId == request.auth.uid
+          isSignedIn() &&
+          storyData(storyId).authorId == request.auth.uid &&
+          storyData(storyId).status in ["draft", "returned"]
         );
       }
 
       match /comments/{commentId} {
         allow read: if canReadStory(storyId);
         allow create: if isSignedIn() &&
-          request.resource.data.userId == request.auth.uid;
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.keys().hasOnly([
+            "text",
+            "userId",
+            "userName",
+            "userPhoto",
+            "createdAt"
+          ]) &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 &&
+          request.resource.data.text.size() <= 1000;
         allow delete: if isAdmin() || (
           isSignedIn() && resource.data.userId == request.auth.uid
         );
       }
+    }
+
+    match /gamificationActions/{actionId} {
+      allow read, write: if false;
+    }
+
+    match /storyViewActions/{actionId} {
+      allow read, write: if false;
+    }
+
+    match /treasureOffers/{offerId} {
+      allow read, write: if false;
     }
 
     match /meta/{docId} {

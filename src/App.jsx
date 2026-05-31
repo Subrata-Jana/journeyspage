@@ -1,5 +1,5 @@
 // src/App.jsx
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom"; 
 import { AuthProvider } from "./contexts/AuthContext";
 
@@ -15,11 +15,11 @@ import Terms from "./pages/Terms";
 import CommunityGuidelines from "./pages/CommunityGuidelines";
 import CopyrightPolicy from "./pages/CopyrightPolicy";
 
-import Dashboard from "./pages/Dashboard";
-import CreateStory from "./pages/CreateStory";
-import StoryDetail from "./pages/StoryDetail";
-import AdminPanel from "./pages/AdminPanel";
-import Profile from "./pages/Profile";
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const CreateStory = lazy(() => import("./pages/CreateStory"));
+const StoryDetail = lazy(() => import("./pages/StoryDetail"));
+const AdminPanel = lazy(() => import("./pages/AdminPanel"));
+const Profile = lazy(() => import("./pages/Profile"));
 
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminGuard from "./components/AdminGuard";
@@ -109,6 +109,7 @@ function Layout() {
       {!hasStandaloneLayout && <Header />}
 
       <main className={hasStandaloneLayout ? "" : "pt-[68px] min-h-screen"}>
+        <Suspense fallback={<div className="min-h-screen bg-slate-50 dark:bg-[#0B0F19] flex items-center justify-center text-sm font-bold text-slate-500">Loading...</div>}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -169,6 +170,7 @@ function Layout() {
             }
           />
         </Routes>
+        </Suspense>
       </main>
 
       {/* 2. Show Footer on public marketing pages, including Home */}

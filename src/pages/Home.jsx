@@ -113,10 +113,10 @@ const formatStoryDate = (story) => {
   });
 };
 
-const formatBudget = (value) => {
+const formatBudget = (value, basis = "total_trip") => {
   const numeric = Number(value || 0);
-  if (!numeric) return "Flexible";
-  return `Rs${numeric.toLocaleString()}`;
+  if (!numeric) return "Not listed";
+  return `INR ${numeric.toLocaleString()} ${basis === "per_person" ? "/ person" : "/ trip"}`;
 };
 
 const getCategoryIcon = (label = "") => {
@@ -195,7 +195,7 @@ const getHeroStoryFacts = (story) => {
     story.totalCost || story.budget || story.estimatedBudget
       ? {
           label: "Budget",
-          value: formatBudget(story.totalCost || story.budget || story.estimatedBudget),
+          value: formatBudget(story.totalCost || story.budget || story.estimatedBudget, story.budgetBasis),
         }
       : null,
     getStoryCountry(story) ? { label: "Country", value: getStoryCountry(story) } : null,
@@ -776,7 +776,7 @@ function SpotlightCard({ story, onOpen, fromState }) {
                   : 0
             }
           />
-          <MetricPill label="Budget" value={formatBudget(story.totalCost)} compact />
+          <MetricPill label="Budget" value={formatBudget(story.totalCost, story.budgetBasis)} compact />
         </div>
 
         <div className="flex items-center justify-between gap-4 pt-2">

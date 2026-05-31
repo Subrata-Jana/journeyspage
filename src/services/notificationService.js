@@ -8,7 +8,7 @@ export const NOTIFICATION_CHANNELS = {
 
 export const getNotificationRecipientIds = (
   userId,
-  { isAdmin = false, includeBroadcast = true } = {}
+  { isAdmin = false, includeBroadcast = false } = {}
 ) => {
   if (!userId) return [];
 
@@ -91,12 +91,13 @@ export const markAllAsRead = async (recipientIds) => {
     
     if (snapshot.empty) return;
 
-    const batch = writeBatch(db);
-    snapshot.docs.forEach((d) => {
-      batch.update(doc(db, "notifications", d.id), { read: true });
-    });
-
-    await batch.commit();
+    for (let offset = 0; offset < snapshot.docs.length; offset += 450) {
+      const batch = writeBatch(db);
+      snapshot.docs.slice(offset, offset + 450).forEach((d) => {
+        batch.update(doc(db, "notifications", d.id), { read: true });
+      });
+      await batch.commit();
+    }
   } catch (error) {
     console.error("Error marking read:", error);
   }

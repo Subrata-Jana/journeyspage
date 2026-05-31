@@ -2,7 +2,7 @@ import React, { useEffect, useState, useContext, createContext, useCallback, use
 import { createPortal } from "react-dom";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
-    collection, doc, getDoc, getDocs, orderBy, query, updateDoc, onSnapshot, increment, addDoc, serverTimestamp
+    collection, doc, getDoc, getDocs, orderBy, query, onSnapshot, addDoc, serverTimestamp
 } from "firebase/firestore";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { motion, useScroll, useSpring, AnimatePresence } from "framer-motion";
@@ -19,7 +19,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useMetaOptions } from "../hooks/useMetaOptions";
 import GallerySlider from "../components/GallerySlider";
 import ThreeSixtyViewer from "../components/ThreeSixtyViewer";
-import { toggleStoryLike, toggleUserTrack, trackShare } from "../services/gamificationService";
+import { recordStoryView, toggleStoryLike, toggleUserTrack, trackShare } from "../services/gamificationService";
 import { sendNotification } from "../services/notificationService";
 import { approveStoryReview, rejectStoryReview, returnStoryForRevision } from "../services/reviewService";
 import TreasureSpawner from "../components/premium/TreasureSpawner";
@@ -113,8 +113,7 @@ export default function StoryDetail() {
             if (sessionStorage.getItem(sessionKey)) return;
             viewTriggered.current = true;
             sessionStorage.setItem(sessionKey, "true");
-            const storyRef = doc(db, "stories", storyId);
-            updateDoc(storyRef, { views: increment(1) }).catch(e => console.error(e));
+            recordStoryView(storyId);
         }
     }, [minTimePassed, hasScrolled, storyId, story]);
 
@@ -232,30 +231,19 @@ export default function StoryDetail() {
         setIsTracking(!isTracking);
         setTrackersCount(prev => isTracking ? prev - 1 : prev + 1);
 
-        const result = await toggleUserTrack(story.authorId, currentUser.uid);
+        const result = await toggleUserTrack(story.authorId);
         if (!result.success) {
             setIsTracking(previousTracking);
             setTrackersCount(previousCount);
             toast.error("Action failed");
         } else if (!previousTracking) {
-            sendNotification({
-                recipientId: story.authorId,
-                type: 'track',
-                title: 'New Tracker',
-                message: `${currentUser.displayName || "A Scout"} started tracking you!`,
-                link: `/profile/${currentUser.uid}`,
-                actorId: currentUser.uid,
-                actorName: currentUser.displayName || "A Scout",
-                entityType: "profile",
-                entityId: currentUser.uid,
-                channel: "social",
-            });
             toast.success(`Tracking ${story.authorName}! (+${result.xpGained || 0} XP)`);
         }
     };
 
     const handleLike = async () => {
         if (!currentUser) return toast.error("Please login to like stories");
+        if (currentUser.uid === story.authorId) return toast.error("You cannot like your own story");
         if (hasLiked) return;
         if (isLiking) return;
 
@@ -264,22 +252,8 @@ export default function StoryDetail() {
         setLikeCount(prev => prev + 1);
 
         try {
-            const result = await toggleStoryLike(story.id, currentUser.uid, story.authorId);
+            const result = await toggleStoryLike(story.id);
             if (result.success) {
-                if (currentUser.uid !== story.authorId) {
-                    sendNotification({
-                        recipientId: story.authorId,
-                        type: 'like',
-                        title: 'New Like',
-                        message: `${currentUser.displayName || "A user"} liked "${story.title}"`,
-                        link: `/story/${story.id}`,
-                        actorId: currentUser.uid,
-                        actorName: currentUser.displayName || "A user",
-                        entityType: "story",
-                        entityId: story.id,
-                        channel: "social",
-                    });
-                }
                 toast.success(`Liked! (+${result.xpGained || 0} XP)`);
             } else {
                 setHasLiked(false);
@@ -306,7 +280,7 @@ export default function StoryDetail() {
             try {
                 await navigator.share(shareData);
                 if (currentUser) {
-                    const result = await trackShare(story.id, currentUser.uid, story.authorId);
+                    const result = await trackShare(story.id);
                     if (result.success && result.shared) {
                         toast.success(`Thanks for sharing! (+${result.xpGained || 0} XP)`);
                         setShareCount(prev => prev + 1);
@@ -318,7 +292,7 @@ export default function StoryDetail() {
                 await navigator.clipboard.writeText(window.location.href);
                 toast.success("Link copied to clipboard!");
                 if (currentUser) {
-                    const result = await trackShare(story.id, currentUser.uid, story.authorId);
+                    const result = await trackShare(story.id);
                     if (result.success && result.shared) {
                         setShareCount(prev => prev + 1);
                     }
@@ -444,6 +418,12 @@ export default function StoryDetail() {
     const difficultyData = story?.difficulty ? difficulties.find(d => d.value === story.difficulty || d.label === story.difficulty) : null;
     const CategoryIcon = categoryData && LucideIcons[categoryData.icon] ? LucideIcons[categoryData.icon] : null;
     const categoryColor = categoryData ? getColorHex(categoryData.color) : "#fff";
+    const tripDurationDays = story?.tripDurationDays || story?.durationDays || days.length || 1;
+    const budgetValue = Number(story?.totalCost || 0);
+    const budgetText = Number.isFinite(budgetValue) && budgetValue > 0
+        ? `INR ${budgetValue.toLocaleString()}`
+        : "Not listed";
+    const budgetBasisLabel = story?.budgetBasis === "per_person" ? "Per person" : "Whole trip";
 
     const issuesCount = Object.entries(feedback || {}).filter(
         ([key, val]) => key !== "general" && val && val.trim() !== ""
@@ -460,7 +440,7 @@ export default function StoryDetail() {
             <div className="bg-slate-50 dark:bg-[#0B0F19] min-h-screen pb-32 font-sans transition-colors duration-300 relative overflow-x-hidden">
                 <Toaster position="bottom-center" />
 
-                {currentUser && currentUser.uid !== story.authorId && !isAdminView && <TreasureSpawner />}
+                {currentUser && currentUser.uid !== story.authorId && !isAdminView && <TreasureSpawner storyId={story.id} />}
 
                 {/* ⚡ DEBUG: ADMIN BADGE */}
                 {isAdminView && (
@@ -610,11 +590,13 @@ export default function StoryDetail() {
                                 </div>
                                 <div className="h-px bg-slate-100 dark:bg-white/5 w-full mb-6 md:mb-8" />
                                 <div className="grid grid-cols-2 gap-4 md:gap-8 mb-6 md:mb-8">
-                                    <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Duration</div><div className="flex items-baseline gap-1"><span className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white">{days.length}</span><span className="text-xs md:text-sm font-bold text-slate-400">Days</span></div></div>
+                                    <ReviewSection id="duration" label="Trip Duration" className="block relative">
+                                        <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Trip Duration</div><div className="flex items-baseline gap-1"><span className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white">{tripDurationDays}</span><span className="text-xs md:text-sm font-bold text-slate-400">Days</span></div><div className="mt-1 text-[10px] font-medium text-slate-400">{days.length} itinerary {days.length === 1 ? "entry" : "entries"}</div></div>
+                                    </ReviewSection>
 
                                     {/* ⚡ UPDATED: Responsive flagPosition for Cost */}
                                     <ReviewSection id="cost" label="Cost" className="block relative" flagPosition="right-0 -top-2 md:-right-3 md:-top-2">
-                                        <div><div className="text-[10px] font-bold text-slate-400 uppercase">Cost</div><div className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight">₹{story.totalCost || "0"}</div></div>
+                                        <div><div className="text-[10px] font-bold text-slate-400 uppercase">Estimated Budget</div><div className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight">{budgetText}</div><div className="mt-1 text-[10px] font-medium text-slate-400">{budgetBasisLabel}</div></div>
                                     </ReviewSection>
                                 </div>
 

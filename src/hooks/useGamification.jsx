@@ -76,8 +76,9 @@ export function useGamification(userXP = 0, userBadges = [], userInventory = [])
   const getProcessedLoot = () => {
     return allLoot.map(item => ({
       ...item,
-      // Loot is stored as simple ID strings, so .includes() is correct here
-      isUnlocked: userInventory.includes(item.id)
+      isUnlocked: userInventory.some(entry =>
+        typeof entry === "string" ? entry === item.id : entry?.itemId === item.id
+      )
     }));
   };
 

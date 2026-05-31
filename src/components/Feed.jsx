@@ -1,17 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, useMotionValue, useMotionTemplate } from "framer-motion";
 import { 
   MapPin, UserPlus, UserCheck, Loader2, 
   Mountain, Flag, Calendar, Wallet, ChevronRight, Clock, Gift, Filter, Search, X
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, getCountFromServer } from "firebase/firestore";
+import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import toast from "react-hot-toast";
 import { fetchGameRules, calculateRank } from "../utils/gameRules";
 import { toggleUserTrack } from "../services/gamificationService";
-import { sendNotification } from "../services/notificationService";
 import { useMetaOptions } from "../hooks/useMetaOptions"; // ⚡ IMPORTED FOR FILTERS
 
 const getStoryLocationMeta = (story) => story?.locationData?.value || story?.locationData || {};
@@ -65,6 +64,11 @@ const matchesStorySearch = (story, searchText) =>
 const matchesStoryLocation = (story, searchText) =>
   !searchText || getStoryLocationTokens(story).some((token) => token.includes(searchText));
 
+const getBudgetNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
 let cachedRanksPromise = null;
 
 const getCachedRanks = async () => {
@@ -102,6 +106,7 @@ export default function Feed({ activeTab = "explore" }) {
       category: "",
       maxBudget: ""
   });
+  const initialFiltersRef = useRef(filters);
   const [showFilters, setShowFilters] = useState(false);
 
   // ⚡ OPTIONS FOR DROPDOWNS
@@ -110,6 +115,7 @@ export default function Feed({ activeTab = "explore" }) {
   const { options: categories } = useMetaOptions("categories");
 
   const [stories, setStories] = useState([]);
+  const [sourceStories, setSourceStories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [trackingList, setTrackingList] = useState([]); 
 
@@ -151,37 +157,31 @@ export default function Feed({ activeTab = "explore" }) {
         const querySnapshot = await getDocs(q);
         
         // ⚡ CLIENT-SIDE FILTERING LOGIC
-        const rawStories = await Promise.all(querySnapshot.docs.map(async (docSnap) => {
-            const data = docSnap.data();
-            let realDaysCount = 0; 
-            try {
-                const daysRef = collection(db, "stories", docSnap.id, "days");
-                const snapshot = await getCountFromServer(daysRef);
-                realDaysCount = snapshot.data().count;
-            } catch (e) { }
-            return { id: docSnap.id, ...data, calculatedDuration: realDaysCount };
-        }));
+        const rawStories = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
 
         const filteredStories = rawStories.filter(story => {
             // Text Search
-            const searchText = filters.search.toLowerCase().trim();
+            const searchText = initialFiltersRef.current.search.toLowerCase().trim();
             const matchesSearch = matchesStorySearch(story, searchText);
             
             // ⚡ SMART LOCATION FILTER
             // Checks City OR State OR Country
-            const locFilter = filters.location.toLowerCase().trim();
+            const locFilter = initialFiltersRef.current.location.toLowerCase().trim();
             const matchesLocation = matchesStoryLocation(story, locFilter);
             // Dropdowns
-            const matchesDifficulty = !filters.difficulty || story.difficulty === filters.difficulty;
-            const matchesType = !filters.tripType || story.tripType === filters.tripType;
-            const matchesCategory = !filters.category || story.category === filters.category;
+            const matchesDifficulty = !initialFiltersRef.current.difficulty || story.difficulty === initialFiltersRef.current.difficulty;
+            const matchesType = !initialFiltersRef.current.tripType || story.tripType === initialFiltersRef.current.tripType;
+            const matchesCategory = !initialFiltersRef.current.category || story.category === initialFiltersRef.current.category;
 
             // Budget
-            const matchesBudget = !filters.maxBudget || (parseInt(story.totalCost || 0) <= parseInt(filters.maxBudget));
+            const maxBudget = getBudgetNumber(initialFiltersRef.current.maxBudget);
+            const storyBudget = getBudgetNumber(story.totalCost);
+            const matchesBudget = !maxBudget || (storyBudget > 0 && storyBudget <= maxBudget);
 
             return matchesSearch && matchesLocation && matchesDifficulty && matchesType && matchesCategory && matchesBudget;
         });
 
+        setSourceStories(rawStories);
         setStories(filteredStories);
 
       } catch (error) { console.error("Error loading feed:", error); } finally { setLoading(false); }
@@ -191,30 +191,34 @@ export default function Feed({ activeTab = "explore" }) {
         fetchStories();
     }
     
-  }, [activeTab, trackingList, filters]); // Re-run when filters change
+  }, [activeTab, trackingList]);
+
+  useEffect(() => {
+    const searchText = filters.search.toLowerCase().trim();
+    const locFilter = filters.location.toLowerCase().trim();
+    setStories(sourceStories.filter(story => {
+      const matchesSearch = matchesStorySearch(story, searchText);
+      const matchesLocation = matchesStoryLocation(story, locFilter);
+      const matchesDifficulty = !filters.difficulty || story.difficulty === filters.difficulty;
+      const matchesType = !filters.tripType || story.tripType === filters.tripType;
+      const matchesCategory = !filters.category || story.category === filters.category;
+      const maxBudget = getBudgetNumber(filters.maxBudget);
+      const storyBudget = getBudgetNumber(story.totalCost);
+      const matchesBudget = !maxBudget || (storyBudget > 0 && storyBudget <= maxBudget);
+      return matchesSearch && matchesLocation && matchesDifficulty && matchesType && matchesCategory && matchesBudget;
+    }));
+  }, [filters, sourceStories]);
 
   const handleToggleTrack = async (authorId) => {
     if (!user) return toast.error("Please login to track scouts");
     if (user.uid === authorId) return toast.error("You cannot track yourself");
 
     try {
-        const result = await toggleUserTrack(authorId, user.uid);
+        const result = await toggleUserTrack(authorId);
         if (!result.success) throw result.error || new Error("track-failed");
 
         if (result.isTracking) {
             setTrackingList(prev => [...new Set([...prev, authorId])]);
-            await sendNotification({
-                recipientId: authorId,
-                type: "track",
-                title: "New Tracker",
-                message: `${user.displayName || "A Scout"} started tracking you!`,
-                link: `/profile/${user.uid}`,
-                actorId: user.uid,
-                actorName: user.displayName || "A Scout",
-                entityType: "profile",
-                entityId: user.uid,
-                channel: "social",
-            });
             toast.success(`Following Scout! (+${result.xpGained || 0} XP)`);
         } else {
             setTrackingList(prev => prev.filter(id => id !== authorId));
@@ -257,7 +261,7 @@ export default function Feed({ activeTab = "explore" }) {
                                   <option value="">Any Category</option>
                                   {categories.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                               </select>
-                              <input type="number" placeholder="Max Budget (₹)" className="p-3 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-sm outline-none" value={filters.maxBudget} onChange={e => setFilters({...filters, maxBudget: e.target.value})} />
+                              <input type="number" placeholder="Max budget (INR)" className="p-3 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-sm outline-none" value={filters.maxBudget} onChange={e => setFilters({...filters, maxBudget: e.target.value})} />
                               
                               <div className="md:col-span-3 lg:col-span-5 flex justify-end">
                                   <button onClick={clearFilters} className="text-sm font-bold text-red-500 hover:text-red-400 flex items-center gap-1"><X size={14}/> Clear All</button>
@@ -344,11 +348,13 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
   const authorInitials = authorName.substring(0, 2).toUpperCase();
   const showImage = avatarUrl && !imgError;
   const displayImage = story.coverImage || "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&q=80&w=1000";
-  const cost = story.totalCost ? `₹${parseInt(story.totalCost).toLocaleString()}` : "Free";
+  const budgetSuffix = story.budgetBasis === "per_person" ? "/ person" : "/ trip";
+  const budgetValue = getBudgetNumber(story.totalCost);
+  const cost = budgetValue ? `INR ${budgetValue.toLocaleString()} ${budgetSuffix}` : "Not listed";
   const when = story.month || "N/A";
   const level = story.difficulty || "Mod";
   const tripType = story.tripType || null;
-  const daysCount = story.calculatedDuration || (story.days ? story.days.length : 1);
+  const daysCount = story.tripDurationDays || story.durationDays || story.itineraryEntryCount || null;
   
   // ⚡ GIFT COUNT LOGIC ⚡
   // We assume 'giftCount' is on the story object. If not, default to 0.
@@ -370,7 +376,7 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
             <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#111827] to-transparent" />
             <div className="absolute top-3 left-3 right-3 flex flex-wrap gap-2">
                 {tripType && (<div className="max-w-[70%] truncate px-2.5 py-1 rounded-full bg-black/58 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-lg"><Flag size={10} className="shrink-0 text-orange-400"/> <span className="truncate">{tripType}</span></div>)}
-                <div className="px-2.5 py-1 rounded-full bg-black/58 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-lg"><Clock size={10} className="text-sky-400"/> {daysCount} Days</div>
+                {daysCount && <div className="px-2.5 py-1 rounded-full bg-black/58 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-lg"><Clock size={10} className="text-sky-400"/> {daysCount} Days</div>}
             </div>
             
             {/* ⚡ RECTIFICATION 5: GIFT COUNT BADGE ⚡ */}
@@ -386,7 +392,7 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
             <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium mb-4"><MapPin size={12} className="text-orange-500 shrink-0" /> <span className="truncate">{story.location || "Unknown Location"}</span></div>
             <div className="grid grid-cols-3 gap-1.5 p-2.5 border border-slate-800/80 mb-4 bg-[#1f2937]/40 rounded-xl shadow-inner">
                 <div className="flex min-w-0 flex-col items-center justify-center px-1"><span className="text-[9px] text-slate-500 uppercase font-bold flex items-center gap-1"><Calendar size={10}/> When</span><span className="max-w-full truncate text-sm font-bold text-slate-200">{when}</span></div>
-                <div className="flex min-w-0 flex-col items-center justify-center border-l border-slate-700/80 px-1"><span className="text-[9px] text-slate-500 uppercase font-bold flex items-center gap-1"><Wallet size={10}/> Cost</span><span className="max-w-full truncate text-sm font-bold text-slate-200">{cost}</span></div>
+                <div className="flex min-w-0 flex-col items-center justify-center border-l border-slate-700/80 px-1"><span className="text-[9px] text-slate-500 uppercase font-bold flex items-center gap-1"><Wallet size={10}/> Budget</span><span className="max-w-full text-center text-xs font-bold leading-tight text-slate-200">{cost}</span></div>
                 <div className="flex min-w-0 flex-col items-center justify-center border-l border-slate-700/80 px-1"><span className="text-[9px] text-slate-500 uppercase font-bold flex items-center gap-1"><Mountain size={10}/> Level</span><span className={`max-w-full truncate text-sm font-bold ${level === 'Hard' ? 'text-red-400' : 'text-emerald-400'}`}>{level}</span></div>
             </div>
             <div className="mt-auto flex items-center justify-between pt-1">
