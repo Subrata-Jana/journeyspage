@@ -69,6 +69,56 @@ const getBudgetNumber = (value) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 };
 
+const normalizeLookupKey = (value) => String(value || "").trim().toLowerCase();
+
+const getOptionValue = (option) => option?.value ?? option?.id ?? option?.label ?? option?.name ?? "";
+
+const resolveOptionLabel = (options = [], value) => {
+  if (value === null || value === undefined || value === "") return "";
+  const key = normalizeLookupKey(value);
+  const match = options.find((option) =>
+    [option.value, option.id, option.label, option.name]
+      .filter(Boolean)
+      .some((candidate) => normalizeLookupKey(candidate) === key)
+  );
+  return match?.label || match?.name || String(value);
+};
+
+const formatBudgetCompact = (value, basis = "total_trip") => {
+  const numeric = getBudgetNumber(value);
+  if (!numeric) return { main: "Not listed", sub: "" };
+  const shortValue =
+    numeric >= 100000
+      ? `${(numeric / 100000).toFixed(numeric % 100000 === 0 ? 0 : 1)}L`
+      : numeric >= 1000
+        ? `${Math.round(numeric / 1000)}k`
+        : numeric.toLocaleString();
+  return {
+    main: `INR ${shortValue}`,
+    sub: basis === "per_person" ? "/ person" : "/ trip",
+  };
+};
+
+const formatJourneyDate = (value) => {
+  if (!value) return "N/A";
+  const text = String(value).trim();
+  const ddmmyyyy = text.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?/);
+  if (ddmmyyyy) {
+    const day = Number(ddmmyyyy[1]);
+    const month = Number(ddmmyyyy[2]) - 1;
+    const year = ddmmyyyy[3] ? Number(String(ddmmyyyy[3]).padStart(4, "20")) : new Date().getFullYear();
+    const date = new Date(year, month, day);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleDateString("en-US", { day: "2-digit", month: "short" });
+    }
+  }
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  }
+  return text;
+};
+
 let cachedRanksPromise = null;
 
 const getCachedRanks = async () => {
@@ -251,15 +301,15 @@ export default function Feed({ activeTab = "explore" }) {
                               <input type="text" placeholder="Place / State / Country" className="p-3 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-sm outline-none" value={filters.location} onChange={e => setFilters({...filters, location: e.target.value})} />
                               <select className="p-3 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-sm outline-none text-slate-900 dark:text-white" value={filters.difficulty} onChange={e => setFilters({...filters, difficulty: e.target.value})}>
                                   <option value="">Any Difficulty</option>
-                                  {difficulties.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                  {difficulties.map(o => <option key={getOptionValue(o)} value={getOptionValue(o)}>{o.label}</option>)}
                               </select>
                               <select className="p-3 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-sm outline-none text-slate-900 dark:text-white" value={filters.tripType} onChange={e => setFilters({...filters, tripType: e.target.value})}>
                                   <option value="">Any Type</option>
-                                  {tripTypes.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                  {tripTypes.map(o => <option key={getOptionValue(o)} value={getOptionValue(o)}>{o.label}</option>)}
                               </select>
                               <select className="p-3 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-sm outline-none text-slate-900 dark:text-white" value={filters.category} onChange={e => setFilters({...filters, category: e.target.value})}>
                                   <option value="">Any Category</option>
-                                  {categories.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                  {categories.map(o => <option key={getOptionValue(o)} value={getOptionValue(o)}>{o.label}</option>)}
                               </select>
                               <input type="number" placeholder="Max budget (INR)" className="p-3 rounded-xl bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 text-sm outline-none" value={filters.maxBudget} onChange={e => setFilters({...filters, maxBudget: e.target.value})} />
                               
@@ -289,6 +339,7 @@ export default function Feed({ activeTab = "explore" }) {
                     isTracking={trackingList.includes(story.authorId)}
                     onToggleTrack={() => handleToggleTrack(story.authorId)}
                     currentUser={user}
+                    optionMaps={{ tripTypes, difficulties, categories }}
                 />
               ))}
             </AnimatePresence>
@@ -298,7 +349,7 @@ export default function Feed({ activeTab = "explore" }) {
   );
 }
 
-function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, currentUser }) {
+function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, currentUser, optionMaps }) {
   const [imgError, setImgError] = useState(false);
   
   // ⚡ OPTIMIZATION: Use stored data first (Instant Load)
@@ -348,12 +399,10 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
   const authorInitials = authorName.substring(0, 2).toUpperCase();
   const showImage = avatarUrl && !imgError;
   const displayImage = story.coverImage || "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&q=80&w=1000";
-  const budgetSuffix = story.budgetBasis === "per_person" ? "/ person" : "/ trip";
-  const budgetValue = getBudgetNumber(story.totalCost);
-  const cost = budgetValue ? `INR ${budgetValue.toLocaleString()} ${budgetSuffix}` : "Not listed";
-  const when = story.month || "N/A";
-  const level = story.difficulty || "Mod";
-  const tripType = story.tripType || null;
+  const budget = formatBudgetCompact(story.totalCost, story.budgetBasis);
+  const when = formatJourneyDate(story.month);
+  const level = resolveOptionLabel(optionMaps?.difficulties, story.difficulty) || "Open";
+  const tripType = resolveOptionLabel(optionMaps?.tripTypes, story.tripType) || resolveOptionLabel(optionMaps?.categories, story.category);
   const daysCount = story.tripDurationDays || story.durationDays || story.itineraryEntryCount || null;
   
   // ⚡ GIFT COUNT LOGIC ⚡
@@ -390,10 +439,22 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
           <div className="flex flex-col flex-1 p-5 pt-4">
             <h3 className="min-h-[3.25rem] text-lg font-bold text-white leading-snug mb-1 line-clamp-2 group-hover:text-orange-400 transition-colors">{story.title}</h3>
             <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium mb-4"><MapPin size={12} className="text-orange-500 shrink-0" /> <span className="truncate">{story.location || "Unknown Location"}</span></div>
-            <div className="grid grid-cols-3 gap-1.5 p-2.5 border border-slate-800/80 mb-4 bg-[#1f2937]/40 rounded-xl shadow-inner">
-                <div className="flex min-w-0 flex-col items-center justify-center px-1"><span className="text-[9px] text-slate-500 uppercase font-bold flex items-center gap-1"><Calendar size={10}/> When</span><span className="max-w-full truncate text-sm font-bold text-slate-200">{when}</span></div>
-                <div className="flex min-w-0 flex-col items-center justify-center border-l border-slate-700/80 px-1"><span className="text-[9px] text-slate-500 uppercase font-bold flex items-center gap-1"><Wallet size={10}/> Budget</span><span className="max-w-full text-center text-xs font-bold leading-tight text-slate-200">{cost}</span></div>
-                <div className="flex min-w-0 flex-col items-center justify-center border-l border-slate-700/80 px-1"><span className="text-[9px] text-slate-500 uppercase font-bold flex items-center gap-1"><Mountain size={10}/> Level</span><span className={`max-w-full truncate text-sm font-bold ${level === 'Hard' ? 'text-red-400' : 'text-emerald-400'}`}>{level}</span></div>
+            <div className="mb-4 rounded-xl border border-slate-800/80 bg-[#172033]/55 p-2.5 shadow-inner">
+                <div className="grid grid-cols-[0.95fr_1.05fr_auto] gap-2">
+                    <div className="min-w-0 rounded-lg bg-white/[0.035] px-2.5 py-2">
+                        <span className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-slate-500"><Calendar size={10}/> When</span>
+                        <span className="block truncate text-sm font-black text-slate-100">{when}</span>
+                    </div>
+                    <div className="min-w-0 rounded-lg bg-white/[0.035] px-2.5 py-2">
+                        <span className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-slate-500"><Wallet size={10}/> Budget</span>
+                        <span className="block truncate text-sm font-black leading-none text-slate-100">{budget.main}</span>
+                        {budget.sub && <span className="mt-0.5 block text-[10px] font-bold text-slate-500">{budget.sub}</span>}
+                    </div>
+                    <div className="min-w-[4.35rem] rounded-lg bg-white/[0.035] px-2.5 py-2">
+                        <span className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-slate-500"><Mountain size={10}/> Level</span>
+                        <span className={`block max-w-[4.8rem] truncate text-sm font-black ${level.toLowerCase().includes('hard') || level.toLowerCase().includes('extreme') ? 'text-red-400' : 'text-emerald-400'}`}>{level}</span>
+                    </div>
+                </div>
             </div>
             <div className="mt-auto flex items-center justify-between pt-1">
                 <div className="flex min-w-0 items-center gap-2.5 cursor-pointer group/author" onClick={handleProfileClick}>
