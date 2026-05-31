@@ -86,7 +86,7 @@ const resolveOptionLabel = (options = [], value) => {
 
 const formatBudgetCompact = (value, basis = "total_trip") => {
   const numeric = getBudgetNumber(value);
-  if (!numeric) return { main: "Not listed", sub: "" };
+  if (!numeric) return { label: basis === "per_person" ? "Cost/head" : "Trip cost", main: "Not listed", sub: "" };
   const shortValue =
     numeric >= 100000
       ? `${(numeric / 100000).toFixed(numeric % 100000 === 0 ? 0 : 1)}L`
@@ -94,8 +94,9 @@ const formatBudgetCompact = (value, basis = "total_trip") => {
         ? `${Math.round(numeric / 1000)}k`
         : numeric.toLocaleString();
   return {
+    label: basis === "per_person" ? "Cost/head" : "Trip cost",
     main: `INR ${shortValue}`,
-    sub: basis === "per_person" ? "/ person" : "/ trip",
+    sub: basis === "per_person" ? "per traveler" : "total estimate",
   };
 };
 
@@ -440,19 +441,21 @@ function NeonMagnetCard({ story, index, navigate, isTracking, onToggleTrack, cur
             <h3 className="min-h-[3.25rem] text-lg font-bold text-white leading-snug mb-1 line-clamp-2 group-hover:text-orange-400 transition-colors">{story.title}</h3>
             <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium mb-4"><MapPin size={12} className="text-orange-500 shrink-0" /> <span className="truncate">{story.location || "Unknown Location"}</span></div>
             <div className="mb-4 rounded-xl border border-slate-800/80 bg-[#172033]/55 p-2.5 shadow-inner">
-                <div className="grid grid-cols-[0.95fr_1.05fr_auto] gap-2">
-                    <div className="min-w-0 rounded-lg bg-white/[0.035] px-2.5 py-2">
+                <div className="grid grid-cols-[1fr_auto] gap-2">
+                    <div className="min-w-0 rounded-lg bg-white/[0.04] px-3 py-2.5">
                         <span className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-slate-500"><Calendar size={10}/> When</span>
-                        <span className="block truncate text-sm font-black text-slate-100">{when}</span>
+                        <span className="block whitespace-nowrap text-[13px] font-black leading-tight text-slate-100">{when}</span>
                     </div>
-                    <div className="min-w-0 rounded-lg bg-white/[0.035] px-2.5 py-2">
-                        <span className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-slate-500"><Wallet size={10}/> Budget</span>
-                        <span className="block truncate text-sm font-black leading-none text-slate-100">{budget.main}</span>
-                        {budget.sub && <span className="mt-0.5 block text-[10px] font-bold text-slate-500">{budget.sub}</span>}
-                    </div>
-                    <div className="min-w-[4.35rem] rounded-lg bg-white/[0.035] px-2.5 py-2">
+                    <div className="min-w-[6rem] rounded-lg bg-white/[0.04] px-3 py-2.5">
                         <span className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-slate-500"><Mountain size={10}/> Level</span>
-                        <span className={`block max-w-[4.8rem] truncate text-sm font-black ${level.toLowerCase().includes('hard') || level.toLowerCase().includes('extreme') ? 'text-red-400' : 'text-emerald-400'}`}>{level}</span>
+                        <span className={`block max-w-[5.8rem] truncate text-[13px] font-black leading-tight ${level.toLowerCase().includes('hard') || level.toLowerCase().includes('extreme') ? 'text-red-400' : 'text-emerald-400'}`}>{level}</span>
+                    </div>
+                    <div className="col-span-2 rounded-lg border border-white/[0.04] bg-white/[0.035] px-3 py-2.5">
+                        <div className="flex min-w-0 items-center justify-between gap-3">
+                            <span className="flex shrink-0 items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-slate-500"><Wallet size={10}/> {budget.label}</span>
+                            <span className="truncate text-right text-sm font-black leading-tight text-slate-100">{budget.main}</span>
+                        </div>
+                        {budget.sub && <div className="mt-0.5 text-right text-[10px] font-bold text-slate-500">{budget.sub}</div>}
                     </div>
                 </div>
             </div>
