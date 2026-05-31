@@ -30,6 +30,7 @@ import {
 
 import SmartImage from "../components/ui/SmartImage";
 import { useAuth } from "../contexts/AuthContext";
+import { useMetaOptions } from "../hooks/useMetaOptions";
 import { db } from "../services/firebase";
 import { getProfilePhotoUrl } from "../utils/userProfile";
 
@@ -58,24 +59,6 @@ const getStoryScore = (story) => {
 
   return likes * 6 + shares * 16 + gifts * 10 + views;
 };
-
-const getStoryLikeCount = (story) =>
-  typeof story.likeCount === "number"
-    ? story.likeCount
-    : Array.isArray(story.likes)
-      ? story.likes.length
-      : 0;
-
-const getStoryShareCount = (story) =>
-  typeof story.shareCount === "number"
-    ? story.shareCount
-    : Array.isArray(story.sharedBy)
-      ? story.sharedBy.length
-      : 0;
-
-const getStoryGiftCount = (story) => Number(story.giftCount || story.tributeCount || 0);
-
-const getStoryViewCount = (story) => Number(story.views || 0);
 
 const getStoryLocationMeta = (story) =>
   story?.locationData?.value || story?.locationData || {};
@@ -144,54 +127,32 @@ const getStoryAuthorImage = (story) =>
     story.authorName || "Explorer"
   )}&background=0f172a&color=ffffff`;
 
-const getStoryVisuals = (story) => {
-  const galleryItems = Array.isArray(story.gallery) ? story.gallery : [];
-  const visuals = [];
+const normalizeLookupKey = (value) => String(value || "").trim().toLowerCase();
 
-  if (story.coverImage) {
-    visuals.push({
-      url: story.coverImage,
-      caption: story.coverImageCaption || "",
-      is360: false,
-      source: "cover",
-    });
-  }
-
-  galleryItems.forEach((item) => {
-    if (typeof item === "string" && item) {
-      visuals.push({
-        url: item,
-        caption: "",
-        is360: false,
-        source: "gallery",
-      });
-      return;
-    }
-
-    if (item?.url) {
-      visuals.push({
-        url: item.url,
-        caption: item.caption || "",
-        is360: !!item.is360,
-        source: item.is360 ? "panorama" : "gallery",
-      });
-    }
-  });
-
-  const seen = new Set();
-  return visuals.filter((visual) => {
-    if (!visual.url || seen.has(visual.url)) return false;
-    seen.add(visual.url);
-    return true;
-  });
+const resolveOptionLabel = (options = [], value) => {
+  if (value === null || value === undefined || value === "") return "";
+  const key = normalizeLookupKey(value);
+  const match = options.find((option) =>
+    [option.value, option.id, option.label, option.name]
+      .filter(Boolean)
+      .some((candidate) => normalizeLookupKey(candidate) === key)
+  );
+  return match?.label || match?.name || String(value);
 };
 
-const getHeroStoryFacts = (story) => {
+const getStoryDisplayMeta = (story, optionMaps = {}) => ({
+  tripType: resolveOptionLabel(optionMaps.tripTypes, story.tripType),
+  difficulty: resolveOptionLabel(optionMaps.difficulties, story.difficulty),
+  category: resolveOptionLabel(optionMaps.categories, story.category),
+});
+
+const getHeroStoryFacts = (story, optionMaps = {}) => {
+  const displayMeta = getStoryDisplayMeta(story, optionMaps);
   const facts = [
     story.authorName ? { label: "Author", value: story.authorName } : null,
-    story.tripType ? { label: "Trip Type", value: story.tripType } : null,
-    story.difficulty ? { label: "Difficulty", value: story.difficulty } : null,
-    story.category ? { label: "Category", value: story.category } : null,
+    story.tripType ? { label: "Trip Type", value: displayMeta.tripType } : null,
+    story.difficulty ? { label: "Difficulty", value: displayMeta.difficulty } : null,
+    story.category ? { label: "Category", value: displayMeta.category } : null,
     story.totalCost || story.budget || story.estimatedBudget
       ? {
           label: "Budget",
@@ -230,15 +191,13 @@ const getHeroStoryHighlight = (story) => {
   return null;
 };
 
-const pickRandomStoryId = (stories, excludeStoryId = null) => {
+const getNextStoryId = (stories, currentStoryId = null) => {
   if (!stories.length) return null;
   if (stories.length === 1) return stories[0].id;
 
-  const pool = excludeStoryId
-    ? stories.filter((story) => story.id !== excludeStoryId)
-    : stories;
-  const candidates = pool.length ? pool : stories;
-  return candidates[Math.floor(Math.random() * candidates.length)].id;
+  const currentIndex = stories.findIndex((story) => story.id === currentStoryId);
+  const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % stories.length;
+  return stories[nextIndex].id;
 };
 
 function HomeSkeleton() {
@@ -360,12 +319,12 @@ function DiscoveryPills({ categories, activeCategory, onSelect }) {
   return (
     <div className="flex gap-3 overflow-x-auto pb-1">
       {categories.map((category) => {
-        const Icon = getCategoryIcon(category);
-        const active = activeCategory === category;
+        const Icon = getCategoryIcon(category.label);
+        const active = activeCategory === category.value;
         return (
           <button
-            key={category}
-            onClick={() => onSelect(category)}
+            key={category.value}
+            onClick={() => onSelect(category.value)}
             className={`flex items-center gap-2 px-5 py-3 rounded-full border transition-all whitespace-nowrap text-sm font-bold ${
               active
                 ? "bg-slate-900 dark:bg-white border-slate-900 dark:border-white text-white dark:text-slate-900 shadow-lg"
@@ -373,7 +332,7 @@ function DiscoveryPills({ categories, activeCategory, onSelect }) {
             }`}
           >
             <LiveIcon icon={Icon} size={16} />
-            {category}
+            {category.label}
           </button>
         );
       })}
@@ -502,38 +461,46 @@ function HomeFallback({ onWrite, isLoggedIn, hasError = false }) {
   );
 }
 
-function HeroSection({ story, onExplore, onWrite, onOpenStory, onShuffle }) {
+function HeroSection({ story, optionMaps, onExplore, onWrite, onOpenStory, onShuffle }) {
   if (!story) return null;
 
-  const storyFacts = getHeroStoryFacts(story).slice(0, 4);
+  const storyFacts = getHeroStoryFacts(story, optionMaps).slice(0, 4);
   const storyHighlight = getHeroStoryHighlight(story);
-  const storyVisuals = getStoryVisuals(story);
   return (
     <section className="relative min-h-screen overflow-hidden">
-      <div className="absolute inset-0">
-        <SmartImage
-          src={story.coverImage}
-          alt={story.title}
-          className="w-full h-full"
-          imgClassName="w-full h-full object-cover"
-          variant="hero"
-          loading="eager"
-          fetchPriority="high"
-        />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(249,115,22,0.14),transparent_32%)]" />
-        <div className="absolute inset-0 bg-black/28" />
-        <div className="absolute inset-0 bg-gradient-to-b from-[#07111d]/22 via-transparent to-[#0B0F19]/62" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#07111d]/34 via-[#07111d]/10 to-transparent" />
-      </div>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={`hero-bg-${story.id}`}
+          className="absolute inset-0"
+          initial={{ opacity: 0, scale: 1.04 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 1.02 }}
+          transition={{ duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <SmartImage
+            src={story.coverImage}
+            alt={story.title}
+            className="w-full h-full"
+            imgClassName="w-full h-full object-cover"
+            variant="hero"
+            loading="eager"
+            fetchPriority="high"
+          />
+        </motion.div>
+      </AnimatePresence>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(249,115,22,0.14),transparent_32%)]" />
+      <div className="absolute inset-0 bg-black/28" />
+      <div className="absolute inset-0 bg-gradient-to-b from-[#07111d]/22 via-transparent to-[#0B0F19]/62" />
+      <div className="absolute inset-0 bg-gradient-to-r from-[#07111d]/34 via-[#07111d]/10 to-transparent" />
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 pt-32 pb-20 lg:pb-28 min-h-screen flex items-end">
         <AnimatePresence mode="wait">
           <motion.div
             key={story.id}
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.45 }}
+            initial={{ opacity: 0, y: 34, filter: "blur(10px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            exit={{ opacity: 0, y: -26, filter: "blur(8px)" }}
+            transition={{ duration: 0.58, ease: [0.22, 1, 0.36, 1] }}
             className="w-full space-y-8"
           >
             <div className="space-y-6 max-w-4xl">
@@ -577,9 +544,9 @@ function HeroSection({ story, onExplore, onWrite, onOpenStory, onShuffle }) {
                 </button>
                 <button
                   onClick={onShuffle}
-                  className="px-6 py-3.5 rounded-full border border-white/15 bg-black/18 text-white hover:bg-white/10 backdrop-blur-md font-bold text-sm md:text-base transition-all flex items-center gap-3"
+                  className="group px-6 py-3.5 rounded-full border border-white/15 bg-black/18 text-white hover:bg-white/10 backdrop-blur-md font-bold text-sm md:text-base transition-all flex items-center gap-3"
                 >
-                  Show Another <LiveIcon icon={RefreshCw} size={16} />
+                  Show Another <RefreshCw size={16} className="transition-transform duration-500 group-hover:rotate-180" />
                 </button>
                 <button
                   onClick={onWrite}
@@ -695,29 +662,40 @@ function ProofStrip({ stats }) {
   ];
 
   return (
-    <section className="max-w-7xl mx-auto px-6 -mt-10 relative z-20">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <section className="max-w-7xl mx-auto px-6 -mt-14 relative z-20">
+      <div className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0B0F19]/86 shadow-2xl shadow-slate-950/20 backdrop-blur-xl">
+        <div className="grid grid-cols-2 lg:grid-cols-4">
         {cards.map((card) => (
           <div
             key={card.label}
-            className="rounded-[1.75rem] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#111625]/85 backdrop-blur-xl p-5 shadow-sm"
+            className="group relative min-h-[116px] overflow-hidden border-white/10 p-5 first:border-l-0 odd:border-r lg:border-r lg:last:border-r-0"
           >
-            <LiveIcon icon={card.icon} size={18} className={`${card.accent} mb-4`} delay={0.15} />
-            <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">
-              {card.value}
-            </div>
-            <div className="text-xs uppercase tracking-[0.2em] font-bold text-slate-500 mt-1">
-              {card.label}
+            <div className="absolute inset-0 bg-gradient-to-br from-white/[0.075] via-transparent to-transparent opacity-80 transition-opacity group-hover:opacity-100" />
+            <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/[0.035] blur-2xl transition-transform duration-500 group-hover:scale-125" />
+            <div className="relative flex h-full items-end justify-between gap-4">
+              <div>
+                <div className="text-3xl md:text-4xl font-black text-white tracking-tight">
+                  {card.value}
+                </div>
+                <div className="mt-1 text-[10px] uppercase tracking-[0.24em] font-bold text-slate-400">
+                  {card.label}
+                </div>
+              </div>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+                <LiveIcon icon={card.icon} size={18} className={card.accent} delay={0.15} />
+              </div>
             </div>
           </div>
         ))}
+        </div>
       </div>
     </section>
   );
 }
 
-function SpotlightCard({ story, onOpen, fromState }) {
+function SpotlightCard({ story, optionMaps, onOpen, fromState }) {
   if (!story) return null;
+  const displayMeta = getStoryDisplayMeta(story, optionMaps);
 
   return (
     <motion.article
@@ -737,10 +715,10 @@ function SpotlightCard({ story, onOpen, fromState }) {
         <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-[#0B0F19]/10 to-transparent" />
         <div className="absolute top-5 left-5 flex flex-wrap gap-2">
           <span className="px-3 py-1.5 rounded-full bg-black/45 backdrop-blur-md border border-white/10 text-white text-[11px] font-bold uppercase tracking-wider">
-            {story.tripType || "Journey"}
+            {displayMeta.tripType || "Journey"}
           </span>
           <span className="px-3 py-1.5 rounded-full bg-black/45 backdrop-blur-md border border-white/10 text-white text-[11px] font-bold uppercase tracking-wider">
-            {story.difficulty || "Open level"}
+            {displayMeta.difficulty || "Open level"}
           </span>
         </div>
       </div>
@@ -989,6 +967,9 @@ export default function Home() {
   const navigate = useNavigate();
   const location = useLocation();
   const discoverRef = useRef(null);
+  const { options: tripTypes } = useMetaOptions("tripTypes");
+  const { options: difficulties } = useMetaOptions("difficultyLevels");
+  const { options: storyCategories } = useMetaOptions("categories");
 
   const [stories, setStories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -996,6 +977,11 @@ export default function Home() {
   const [heroStoryId, setHeroStoryId] = useState(null);
   const [totalStories, setTotalStories] = useState(0);
   const [activeCategory, setActiveCategory] = useState("All");
+
+  const optionMaps = useMemo(
+    () => ({ tripTypes, difficulties, categories: storyCategories }),
+    [tripTypes, difficulties, storyCategories]
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -1048,8 +1034,18 @@ export default function Home() {
       if (currentStoryId && stories.some((story) => story.id === currentStoryId)) {
         return currentStoryId;
       }
-      return pickRandomStoryId(stories);
+      return stories[0]?.id || null;
     });
+  }, [stories]);
+
+  useEffect(() => {
+    if (stories.length < 2) return undefined;
+
+    const interval = window.setInterval(() => {
+      setHeroStoryId((currentStoryId) => getNextStoryId(stories, currentStoryId));
+    }, 9000);
+
+    return () => window.clearInterval(interval);
   }, [stories]);
 
   const heroStory = useMemo(
@@ -1060,9 +1056,14 @@ export default function Home() {
   const categories = useMemo(() => {
     const dynamic = Array.from(
       new Set(stories.map((story) => story.tripType).filter(Boolean))
-    ).slice(0, 6);
-    return ["All", ...dynamic];
-  }, [stories]);
+    )
+      .slice(0, 6)
+      .map((value) => ({
+        value,
+        label: resolveOptionLabel(tripTypes, value),
+      }));
+    return [{ value: "All", label: "All" }, ...dynamic];
+  }, [stories, tripTypes]);
 
   const filteredStories = useMemo(() => {
     if (activeCategory === "All") return stories;
@@ -1119,7 +1120,7 @@ export default function Home() {
   };
 
   const handleShuffleHero = () => {
-    setHeroStoryId((currentStoryId) => pickRandomStoryId(stories, currentStoryId));
+    setHeroStoryId((currentStoryId) => getNextStoryId(stories, currentStoryId));
   };
 
   if (loading) return <HomeSkeleton />;
@@ -1136,6 +1137,7 @@ export default function Home() {
     <div className="-mt-[68px] bg-slate-50 dark:bg-[#0B0F19]">
       <HeroSection
         story={heroStory}
+        optionMaps={optionMaps}
         onExplore={handleExplore}
         onWrite={handleWrite}
         onOpenStory={(storyId) =>
@@ -1166,6 +1168,7 @@ export default function Home() {
         <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-8">
           <SpotlightCard
             story={spotlightStory}
+            optionMaps={optionMaps}
             onOpen={openStory}
             fromState={getStoryLinkState(location.pathname, location.search)}
           />
