@@ -26,6 +26,14 @@ const requireAuth = (request) => {
   return request.auth.uid;
 };
 
+const requireVerifiedAuth = (request) => {
+  const uid = requireAuth(request);
+  if (request.auth.token.email_verified !== true) {
+    throw new HttpsError("failed-precondition", "Please verify your email before using community features.");
+  }
+  return uid;
+};
+
 const cleanText = (value, maxLength = 240) =>
   String(value || "").trim().slice(0, maxLength);
 
@@ -162,7 +170,7 @@ async function syncGamification(userId) {
 }
 
 exports.toggleStoryLike = onCall(async (request) => {
-  const uid = requireAuth(request);
+  const uid = requireVerifiedAuth(request);
   const storyId = cleanText(request.data?.storyId, 120);
   if (!storyId) throw new HttpsError("invalid-argument", "Story is required.");
 
@@ -219,7 +227,7 @@ exports.toggleStoryLike = onCall(async (request) => {
 });
 
 exports.toggleUserTrack = onCall(async (request) => {
-  const uid = requireAuth(request);
+  const uid = requireVerifiedAuth(request);
   const targetUserId = cleanText(request.data?.targetUserId, 120);
   if (!targetUserId || targetUserId === uid) throw new HttpsError("invalid-argument", "Choose another traveler.");
   return db.runTransaction(async (tx) => {
@@ -267,7 +275,7 @@ exports.toggleUserTrack = onCall(async (request) => {
 });
 
 exports.trackStoryShare = onCall(async (request) => {
-  const uid = requireAuth(request);
+  const uid = requireVerifiedAuth(request);
   const storyId = cleanText(request.data?.storyId, 120);
   return db.runTransaction(async (tx) => {
     const storyRef = db.doc(`stories/${storyId}`);
@@ -306,7 +314,7 @@ exports.recordStoryView = onCall(async (request) => {
 });
 
 exports.requestTreasureOffer = onCall(async (request) => {
-  const uid = requireAuth(request);
+  const uid = requireVerifiedAuth(request);
   const storyId = cleanText(request.data?.storyId, 120);
   const offerRef = db.doc(`treasureOffers/${storyId}_${uid}`);
   return db.runTransaction(async (tx) => {
@@ -325,7 +333,7 @@ exports.requestTreasureOffer = onCall(async (request) => {
 });
 
 exports.claimTreasure = onCall(async (request) => {
-  const uid = requireAuth(request);
+  const uid = requireVerifiedAuth(request);
   const storyId = cleanText(request.data?.storyId, 120);
   return db.runTransaction(async (tx) => {
     const offerRef = db.doc(`treasureOffers/${storyId}_${uid}`);
@@ -353,7 +361,7 @@ exports.claimTreasure = onCall(async (request) => {
 });
 
 exports.sendTribute = onCall(async (request) => {
-  const uid = requireAuth(request);
+  const uid = requireVerifiedAuth(request);
   const storyId = cleanText(request.data?.storyId, 120);
   const obtainedAt = cleanText(request.data?.obtainedAt, 80);
   const itemId = cleanText(request.data?.itemId, 100);
@@ -402,7 +410,7 @@ exports.sendTribute = onCall(async (request) => {
 });
 
 exports.processUserSession = onCall(async (request) => {
-  const uid = requireAuth(request);
+  const uid = requireVerifiedAuth(request);
   return db.runTransaction(async (tx) => {
     const userRef = db.doc(`users/${uid}`);
     const lootRef = db.doc("meta/loot");
@@ -429,7 +437,7 @@ exports.processUserSession = onCall(async (request) => {
 });
 
 exports.syncUserGamification = onCall(async (request) => {
-  const uid = requireAuth(request);
+  const uid = requireVerifiedAuth(request);
   const userId = cleanText(request.data?.userId || uid, 120);
   if (userId !== uid && !(await isAdmin(uid, request.auth.token.email))) {
     throw new HttpsError("permission-denied", "You cannot sync another traveler.");

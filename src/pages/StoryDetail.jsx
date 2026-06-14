@@ -138,6 +138,17 @@ export default function StoryDetail() {
     const isResubmission = story?.status === 'pending' && story?.feedback && Object.keys(story.feedback).length > 0;
     const isAdminView = canReviewStoryAsStaff(currentUser, userProfile, story);
     const isBengaliTitle = hasBengaliText(story?.title);
+    const requireVerifiedCommunity = useCallback((actionLabel) => {
+        if (!currentUser) {
+            toast.error(`Please login to ${actionLabel}`);
+            return false;
+        }
+        if (!currentUser.emailVerified) {
+            toast.error("Please verify your email before using community features.");
+            return false;
+        }
+        return true;
+    }, [currentUser]);
 
     useEffect(() => {
         if (!storyId) return;
@@ -223,7 +234,7 @@ export default function StoryDetail() {
     // --- ACTIONS ---
 
     const handleTrack = async () => {
-        if (!currentUser) return toast.error("Please login to track scouts");
+        if (!requireVerifiedCommunity("track scouts")) return;
         if (currentUser.uid === story.authorId) return toast.error("You cannot track yourself!");
 
         const previousTracking = isTracking;
@@ -242,7 +253,7 @@ export default function StoryDetail() {
     };
 
     const handleLike = async () => {
-        if (!currentUser) return toast.error("Please login to like stories");
+        if (!requireVerifiedCommunity("like stories")) return;
         if (currentUser.uid === story.authorId) return toast.error("You cannot like your own story");
         if (hasLiked) return;
         if (isLiking) return;
@@ -260,16 +271,17 @@ export default function StoryDetail() {
                 setLikeCount(prev => prev - 1);
                 toast.error("Action failed");
             }
-        } catch (error) {
+        } catch {
             setHasLiked(false);
             setLikeCount(prev => prev - 1);
+            toast.error("Action failed");
         } finally {
             setIsLiking(false);
         }
     };
 
     const handleGift = () => {
-        if (!currentUser) return toast.error("Log in to send a Tribute!");
+        if (!requireVerifiedCommunity("send a Tribute")) return;
         if (currentUser.uid === story.authorId) return toast.error("You cannot gift yourself!");
         setShowGiftModal(true);
     };
@@ -279,23 +291,27 @@ export default function StoryDetail() {
         if (navigator.share) {
             try {
                 await navigator.share(shareData);
-                if (currentUser) {
+                if (currentUser?.emailVerified) {
                     const result = await trackShare(story.id);
                     if (result.success && result.shared) {
                         toast.success(`Thanks for sharing! (+${result.xpGained || 0} XP)`);
                         setShareCount(prev => prev + 1);
                     }
+                } else if (currentUser) {
+                    toast.error("Verify your email to earn sharing rewards.");
                 }
             } catch (err) { console.log("Share canceled"); }
         } else {
             try {
                 await navigator.clipboard.writeText(window.location.href);
                 toast.success("Link copied to clipboard!");
-                if (currentUser) {
+                if (currentUser?.emailVerified) {
                     const result = await trackShare(story.id);
                     if (result.success && result.shared) {
                         setShareCount(prev => prev + 1);
                     }
+                } else if (currentUser) {
+                    toast.error("Verify your email to earn sharing rewards.");
                 }
             } catch (err) { toast.error("Failed to copy link"); }
         }
@@ -303,7 +319,7 @@ export default function StoryDetail() {
 
     const handlePostComment = async () => {
         if (!newComment.trim()) return;
-        if (!currentUser) return toast.error("Please login to comment");
+        if (!requireVerifiedCommunity("comment")) return;
         setSubmittingComment(true);
         try {
             await addDoc(collection(db, "stories", storyId, "comments"), {

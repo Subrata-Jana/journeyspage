@@ -6,6 +6,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
     function userEmail() {
       return isSignedIn() && request.auth.token.email != null
         ? request.auth.token.email.lower()
@@ -33,8 +37,25 @@ service cloud.firestore {
     }
 
     function isCreatingSafeUserProfile() {
-      return !request.resource.data.keys().hasAny(["role"]) ||
-        request.resource.data.role == "user";
+      return (
+        !request.resource.data.keys().hasAny(["role"]) ||
+        request.resource.data.role == "user"
+      ) &&
+      (
+        !request.resource.data.keys().hasAny(["emailVerified"]) ||
+        request.resource.data.emailVerified == (request.auth.token.email_verified == true)
+      ) &&
+      (
+        !request.resource.data.keys().hasAny(["trustLevel"]) ||
+        (
+          request.auth.token.email_verified == true &&
+          request.resource.data.trustLevel == "verified"
+        ) ||
+        (
+          request.auth.token.email_verified != true &&
+          request.resource.data.trustLevel == "new"
+        )
+      );
     }
 
     function isUpdatingOwnProfile(userId) {
@@ -197,7 +218,7 @@ service cloud.firestore {
         isAdmin() ||
         (isEditor() && resource.data.status == "pending" && resource.data.authorId != request.auth.uid);
 
-      allow create: if isSignedIn() &&
+      allow create: if isVerifiedUser() &&
         request.resource.data.authorId == request.auth.uid &&
         request.resource.data.status == "draft" &&
         (!request.resource.data.keys().hasAny(["published"]) || request.resource.data.published == false);
@@ -206,7 +227,7 @@ service cloud.firestore {
         isAdmin() ||
         isEditorReviewUpdate() ||
         (
-          isSignedIn() &&
+          isVerifiedUser() &&
           resource.data.authorId == request.auth.uid &&
           request.resource.data.authorId == resource.data.authorId &&
           request.resource.data.createdAt == resource.data.createdAt &&
@@ -225,7 +246,7 @@ service cloud.firestore {
       match /days/{dayId} {
         allow read: if canReadStory(storyId);
         allow write: if isAdmin() || (
-          isSignedIn() &&
+          isVerifiedUser() &&
           storyData(storyId).authorId == request.auth.uid &&
           storyData(storyId).status in ["draft", "returned"]
         );
@@ -233,7 +254,7 @@ service cloud.firestore {
 
       match /comments/{commentId} {
         allow read: if canReadStory(storyId);
-        allow create: if isSignedIn() &&
+        allow create: if isVerifiedUser() &&
           request.resource.data.userId == request.auth.uid &&
           request.resource.data.keys().hasOnly([
             "text",

@@ -13,6 +13,7 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
+  sendEmailVerification,
   updateEmail as fbUpdateEmail,
   updatePassword as fbUpdatePassword,
   reauthenticateWithCredential,
@@ -59,7 +60,11 @@ export const AuthProvider = ({ children }) => {
       const snap = await getDoc(refDoc);
 
       if (snap.exists()) {
-        setUserProfile(normalizeUserProfile(snap.data()));
+        setUserProfile(normalizeUserProfile({
+          ...snap.data(),
+          emailVerified: !!firebaseUser.emailVerified,
+          trustLevel: snap.data().trustLevel || (firebaseUser.emailVerified ? "verified" : "new"),
+        }));
       } else {
         // 🛡️ AUTO-CREATE PROFILE
         const profile = normalizeUserProfile({
@@ -71,6 +76,8 @@ export const AuthProvider = ({ children }) => {
           level: 1,
           points: 0,
           badges: [],
+          emailVerified: !!firebaseUser.emailVerified,
+          trustLevel: firebaseUser.emailVerified ? "verified" : "new",
           createdAt: serverTimestamp(),
         });
 
@@ -97,7 +104,11 @@ export const AuthProvider = ({ children }) => {
         await loadOrCreateProfile(firebaseUser);
         profileUnsub = onSnapshot(doc(db, "users", firebaseUser.uid), (snap) => {
           if (snap.exists()) {
-            setUserProfile(normalizeUserProfile(snap.data()));
+            setUserProfile(normalizeUserProfile({
+              ...snap.data(),
+              emailVerified: !!auth.currentUser?.emailVerified,
+              trustLevel: snap.data().trustLevel || (auth.currentUser?.emailVerified ? "verified" : "new"),
+            }));
           }
         });
       } else {
@@ -126,28 +137,49 @@ export const AuthProvider = ({ children }) => {
   );
 
   const register = useCallback(async (email, password, name = "") => {
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    const trimmedEmail = email.trim();
+    const cred = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
     
     // Update Firebase Auth Profile
     if (name) await fbUpdateProfile(cred.user, { displayName: name });
 
     const profile = normalizeUserProfile({
       name,
-      email,
+      email: trimmedEmail,
       ...buildAvatarFields(""),
       onboarded: false,
       darkMode: false,
       level: 1,
       points: 0,
       badges: [],
+      emailVerified: false,
+      trustLevel: "new",
       createdAt: serverTimestamp(),
     });
 
     await setDoc(doc(db, "users", cred.user.uid), profile);
+    await sendEmailVerification(cred.user, {
+      url: typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined,
+    });
     setUserProfile(profile);
 
     return cred;
   }, []);
+
+  const sendVerificationEmail = useCallback(async () => {
+    if (!auth.currentUser) throw new Error("Not authenticated");
+    await sendEmailVerification(auth.currentUser, {
+      url: typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined,
+    });
+  }, []);
+
+  const refreshAuthUser = useCallback(async () => {
+    if (!auth.currentUser) return null;
+    await auth.currentUser.reload();
+    setUser(auth.currentUser);
+    await loadOrCreateProfile(auth.currentUser);
+    return auth.currentUser;
+  }, [loadOrCreateProfile]);
 
   // 👇 FIXED LOGOUT FUNCTION
   const logout = useCallback(async () => {
@@ -254,6 +286,8 @@ export const AuthProvider = ({ children }) => {
       register,
       logout,
       resetPassword,
+      sendVerificationEmail,
+      refreshAuthUser,
       uploadAvatar,
       updateProfileName,
       updateProfileEmail,
@@ -261,7 +295,7 @@ export const AuthProvider = ({ children }) => {
       updateDarkMode,
       reauthenticate,
     }),
-    [user, userProfile, loading, avatarUploadProgress, login, register, logout, resetPassword, uploadAvatar, updateProfileName, updateProfileEmail, updateProfilePassword, updateDarkMode, reauthenticate]
+    [user, userProfile, loading, avatarUploadProgress, login, register, logout, resetPassword, sendVerificationEmail, refreshAuthUser, uploadAvatar, updateProfileName, updateProfileEmail, updateProfilePassword, updateDarkMode, reauthenticate]
   );
 
   return (

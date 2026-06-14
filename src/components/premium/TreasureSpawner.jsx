@@ -12,7 +12,7 @@ export default function TreasureSpawner({ storyId }) {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    if (!user || !storyId) return undefined;
+    if (!user?.emailVerified || !storyId) return undefined;
     let active = true;
     const timer = setTimeout(async () => {
       const result = await requestTreasureOffer(storyId);

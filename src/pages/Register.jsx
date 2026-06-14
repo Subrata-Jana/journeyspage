@@ -9,6 +9,30 @@ import Button from "../components/ui/Button";
 import AuthCard from "../components/ui/AuthCard";
 import { useAuth } from "../contexts/AuthContext";
 
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  "10minutemail.com",
+  "10minutemail.net",
+  "20minutemail.com",
+  "dispostable.com",
+  "fakeinbox.com",
+  "getnada.com",
+  "guerrillamail.com",
+  "guerrillamail.net",
+  "maildrop.cc",
+  "mailinator.com",
+  "moakt.com",
+  "sharklasers.com",
+  "temp-mail.org",
+  "tempmail.com",
+  "tempmail.net",
+  "tempr.email",
+  "throwawaymail.com",
+  "trashmail.com",
+  "yopmail.com",
+]);
+
+const getEmailDomain = (email) => String(email || "").trim().toLowerCase().split("@").pop();
+
 export default function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -24,6 +48,9 @@ export default function Register() {
   const validateForm = () => {
     if (!form.name.trim()) return "Full Name is required";
     if (!form.email.includes("@")) return "Enter a valid email address";
+    if (DISPOSABLE_EMAIL_DOMAINS.has(getEmailDomain(form.email))) {
+      return "Temporary email addresses are not allowed. Please use your personal email.";
+    }
     if (form.password.length < 6) return "Password must be at least 6 characters";
     if (form.password !== form.confirm) return "Passwords do not match";
     return null;
@@ -37,8 +64,8 @@ export default function Register() {
     try {
       setLoading(true);
       await register(form.email, form.password, form.name.trim());
-      toast.success("Account created - redirecting...");
-      setTimeout(() => navigate("/dashboard", { replace: true }), 900);
+      toast.success("Account created. Verification email sent.");
+      setTimeout(() => navigate("/dashboard", { replace: true }), 1200);
     } catch (error) {
       console.error("register failed", error);
       toast.error(error?.message || "Registration failed");
@@ -89,6 +116,9 @@ export default function Register() {
               onChange={(e) => setForm({ ...form, email: e.target.value })}
               autoComplete="email"
             />
+            <p className="-mt-3 text-xs leading-relaxed text-gray-400">
+              Please use a reachable personal email. You must verify it before posting journeys or earning community rewards.
+            </p>
             <Input
               icon={Lock}
               placeholder="Password"

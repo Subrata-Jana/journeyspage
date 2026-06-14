@@ -262,6 +262,7 @@ export default function Feed({ activeTab = "explore" }) {
 
   const handleToggleTrack = async (authorId) => {
     if (!user) return toast.error("Please login to track scouts");
+    if (!user.emailVerified) return toast.error("Please verify your email before tracking travelers.");
     if (user.uid === authorId) return toast.error("You cannot track yourself");
 
     try {
@@ -275,7 +276,7 @@ export default function Feed({ activeTab = "explore" }) {
             setTrackingList(prev => prev.filter(id => id !== authorId));
             toast.success("Unfollowed Scout");
         }
-    } catch (error) { toast.error("Failed to update tracking"); }
+    } catch { toast.error("Failed to update tracking"); }
   };
 
   const clearFilters = () => setFilters({ search: "", location: "", difficulty: "", tripType: "", category: "", maxBudget: "" });

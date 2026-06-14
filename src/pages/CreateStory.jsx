@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import {
   Plus, Trash2, ChevronDown, ChevronUp, Save, Send,
   Camera, Image as ImageIcon, Loader2, AlertCircle,
-  Youtube, Type, ArrowLeft, Sun, Moon, AlertTriangle, Globe2, Lock, Edit3, CheckCircle2, Hammer
+  Youtube, Type, ArrowLeft, Sun, Moon, AlertTriangle, Globe2, Lock, Edit3, CheckCircle2, Hammer, MailCheck
 } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -48,7 +48,7 @@ const CONTENT_CONSENT_STATEMENT =
   "I confirm that I own this story and media, or have permission to publish them, and I accept that infringing or unsafe content may be removed and my account may be restricted or deactivated.";
 
 export default function CreateStory() {
-  const { user, userProfile } = useAuth();
+  const { user, userProfile, sendVerificationEmail, refreshAuthUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -60,6 +60,8 @@ export default function CreateStory() {
   const [showValidationModal, setShowValidationModal] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
   const [contentConsentAccepted, setContentConsentAccepted] = useState(false);
+  const [verificationSending, setVerificationSending] = useState(false);
+  const [verificationRefreshing, setVerificationRefreshing] = useState(false);
 
   // ⚡ TRACK MODIFIED FIELDS (The "Amber" State)
   const [modifiedFields, setModifiedFields] = useState({});
@@ -87,6 +89,7 @@ export default function CreateStory() {
   const [feedback, setFeedback] = useState({}); 
 
   const isReturned = storyStatus === "returned";
+  const isEmailVerified = !!user?.emailVerified;
 
   const getDayFeedbackKey = useCallback(
     (day, index) => `day_${day?.dayNumber ?? index + 1}`,
@@ -347,6 +350,11 @@ export default function CreateStory() {
 
   const submitStory = async (publish) => {
     if (isSubmitting) return;
+    if (!isEmailVerified) {
+      setValidationErrors(["Verify your email before saving drafts, publishing stories, or submitting revisions."]);
+      setShowValidationModal(true);
+      return;
+    }
     if (!trip.title.trim()) return alert("Story title is required!");
 
     // 1. Validation for Publishing
@@ -526,6 +534,34 @@ export default function CreateStory() {
     }
   };
 
+  const handleSendVerification = async () => {
+    if (verificationSending) return;
+    try {
+      setVerificationSending(true);
+      await sendVerificationEmail();
+      alert("Verification email sent. Please check your inbox and spam folder.");
+    } catch (error) {
+      alert(error?.message || "Could not send verification email. Please try again later.");
+    } finally {
+      setVerificationSending(false);
+    }
+  };
+
+  const handleRefreshVerification = async () => {
+    if (verificationRefreshing) return;
+    try {
+      setVerificationRefreshing(true);
+      const refreshedUser = await refreshAuthUser();
+      alert(refreshedUser?.emailVerified
+        ? "Email verified. You can now post your journey."
+        : "Email is still not verified. Please open the verification link first.");
+    } catch (error) {
+      alert(error?.message || "Could not refresh verification status.");
+    } finally {
+      setVerificationRefreshing(false);
+    }
+  };
+
   if (loading) {
       return (
         <div className="min-h-screen bg-slate-50 dark:bg-[#0B0F19] flex items-center justify-center">
@@ -581,6 +617,40 @@ export default function CreateStory() {
                     Needs Action
                 </div>
             </div>
+        )}
+
+        {!isEmailVerified && (
+          <div className="mb-8 rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm dark:border-amber-500/25 dark:bg-amber-500/10">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+                <MailCheck size={24} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Verify your email to post a journey</h3>
+                <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                  We sent a verification link to {user?.email || "your email"}. Verified email is required for drafts, publishing, comments, likes, tracking, and rewards.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row md:flex-col lg:flex-row">
+                <button
+                  type="button"
+                  onClick={handleSendVerification}
+                  disabled={verificationSending}
+                  className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                >
+                  {verificationSending ? "Sending..." : "Resend Email"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRefreshVerification}
+                  disabled={verificationRefreshing}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
+                >
+                  {verificationRefreshing ? "Checking..." : "I Verified"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 backdrop-blur-xl rounded-3xl p-6 md:p-8 shadow-xl dark:shadow-2xl space-y-8">
@@ -859,12 +929,12 @@ export default function CreateStory() {
                 </span>
               </label>
               <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => submitStory(false)} disabled={isSubmitting} className="py-4 rounded-xl bg-white dark:bg-[#1A1F2E] text-slate-600 dark:text-white font-medium border border-slate-200 dark:border-white/10 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 flex items-center justify-center gap-2 shadow-lg transition-colors">
-                  {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18} />} Save Draft
+                <button onClick={() => submitStory(false)} disabled={isSubmitting || !isEmailVerified} className="py-4 rounded-xl bg-white dark:bg-[#1A1F2E] text-slate-600 dark:text-white font-medium border border-slate-200 dark:border-white/10 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg transition-colors">
+                  {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={18} />} {isEmailVerified ? "Save Draft" : "Verify Email First"}
                 </button>
-                <button onClick={() => submitStory(true)} disabled={isSubmitting} className={`py-4 rounded-xl text-white font-bold hover:shadow-orange-500/20 hover:scale-[1.02] flex items-center justify-center gap-2 shadow-lg ${isReturned ? 'bg-red-600 hover:bg-red-500 shadow-red-500/20' : 'bg-gradient-to-r from-orange-600 to-orange-500'} ${!contentConsentAccepted ? 'opacity-80' : ''}`}>
+                <button onClick={() => submitStory(true)} disabled={isSubmitting || !isEmailVerified} className={`py-4 rounded-xl text-white font-bold hover:shadow-orange-500/20 hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg ${isReturned ? 'bg-red-600 hover:bg-red-500 shadow-red-500/20' : 'bg-gradient-to-r from-orange-600 to-orange-500'} ${!contentConsentAccepted ? 'opacity-80' : ''}`}>
                   {isSubmitting ? <Loader2 className="animate-spin" /> : <Send size={18} />}
-                  {isReturned ? "Submit Revisions" : "Publish Story"}
+                  {!isEmailVerified ? "Verify Email First" : isReturned ? "Submit Revisions" : "Publish Story"}
                 </button>
               </div>
             </div>
