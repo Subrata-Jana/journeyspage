@@ -6,12 +6,11 @@ import { db } from '../../services/firebase';
 import { useAuth } from '../../contexts/AuthContext'; 
 import { sendTribute } from '../../services/gamificationService'; 
 import toast from 'react-hot-toast';
-import * as LucideIcons from "lucide-react";
+import { RenderLucideIcon } from "../../utils/lucideIconMap";
 
 // Helper to render icons safely
 const RenderIcon = ({ iconName, size = 24, className }) => {
-    const Icon = LucideIcons[iconName] || LucideIcons.HelpCircle;
-    return <Icon size={size} className={className} />;
+    return <RenderLucideIcon iconName={iconName} size={size} className={className} fallback={AlertCircle} />;
 };
 
 export default function GiftModal({ isOpen, onClose, authorId, authorName, storyId, storyTitle }) {

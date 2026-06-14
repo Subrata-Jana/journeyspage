@@ -3,13 +3,13 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../../services/firebase"; // Adjust path if needed
 import { useAuth } from "../../contexts/AuthContext"; // Adjust path if needed
 import { motion, AnimatePresence } from "framer-motion";
-import * as LucideIcons from "lucide-react";
 import { X, Sparkles, MapPin, User, Quote } from "lucide-react";
+import { Gift as GiftIcon } from "lucide-react";
+import { RenderLucideIcon } from "../../utils/lucideIconMap";
 
 // Helper to render dynamic icons
 const RenderIcon = ({ iconName, size = 48, className }) => {
-  const Icon = LucideIcons[iconName] || LucideIcons.Gift;
-  return <Icon size={size} className={className} />;
+  return <RenderLucideIcon iconName={iconName} size={size} className={className} fallback={GiftIcon} />;
 };
 
 const getSenderName = (gift) =>

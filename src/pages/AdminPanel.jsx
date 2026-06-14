@@ -17,15 +17,13 @@ import {
   Users, ShieldCheck, Ban
 } from "lucide-react";
 
-// 2. DYNAMIC IMPORT for the icon picker
-import * as LucideIcons from "lucide-react"; 
-
 import toast, { Toaster } from "react-hot-toast";
 import { formatDistanceToNow } from 'date-fns';
 import { approveStoryReview, returnStoryForRevision, rejectStoryReview } from "../services/reviewService";
 import { canReviewStoryAsStaff, isAuthorizedAdmin, isReviewStaff, USER_ROLES } from "../utils/admin";
 import { deleteStoryWithAssets } from "../services/storyCleanupService";
 import { useAuth } from "../contexts/AuthContext";
+import { getLucideIcon, ICON_LIST } from "../utils/lucideIconMap";
 
 // --- CONSTANTS ---
 const SCROLLBAR_STYLES = `
@@ -34,27 +32,6 @@ const SCROLLBAR_STYLES = `
   .custom-scrollbar::-webkit-scrollbar-thumb { background: #64748b; border-radius: 10px; }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 `;
-
-const ICON_LIST = [
-  "Mountain", "Tent", "Trees", "TreePine", "Flower", "Leaf", "Palmtree", 
-  "Sun", "Moon", "Cloud", "CloudRain", "Snowflake", "Wind", "Droplets", 
-  "Flame", "Waves", "Sunset", "Sunrise", "Umbrella", "Feather",
-  "Plane", "Car", "Bike", "Bus", "Train", "Ship", "Anchor", "Sailboat", 
-  "Map", "MapPin", "Compass", "Globe", "Navigation", "Ticket", "Luggage", 
-  "Backpack", "Briefcase", "Key", "Landmark", "Building", "LifeBuoy",
-  "Camera", "Image", "Video", "Film", "Music", "Mic", "Headphones", "Speaker",
-  "Palette", "Brush", "PenTool", "Book", "BookOpen", "Gamepad", "Puzzle",
-  "Dumbbell", "Footprints", "Fish", "Binoculars", "Glasses", "Scroll", "Watch",
-  "Coffee", "Utensils", "Pizza", "Beer", "Wine", "Martini", "CupSoda", 
-  "Cake", "Apple", "Carrot", "Soup", "IceCream",
-  "Star", "Heart", "Zap", "Trophy", "Award", "Medal", "Crown", "Gem", 
-  "Diamond", "Shield", "Target", "Flag", "Sparkles", "Rocket", "Ghost", 
-  "Skull", "ThumbsUp", "Smile", "Meh", "Frown", "Coins", "CreditCard",
-  "Check", "CheckCircle", "X", "XCircle", "AlertCircle", "Info", "HelpCircle", 
-  "User", "Users", "UserPlus", "Lock", "Unlock", "Eye", "EyeOff",
-  "Settings", "Filter", "Search", "Tag", "Link", "Home", "Bell", "Calendar", 
-  "Clock", "Gift", "ShoppingBag", "DollarSign", "Droplet", "Hexagon", "Circle", "Shell", "Telescope"
-];
 
 const COLOR_PALETTE = [
   { name: "slate", hex: "#64748b" }, { name: "red", hex: "#ef4444" },
@@ -1161,7 +1138,7 @@ function ManageLoot({ isDark }) {
 
     const renderIcon = (iconName) => {
         if (!iconName) return <HelpCircle size={18} />;
-        const IconComponent = LucideIcons[iconName];
+        const IconComponent = getLucideIcon(iconName, HelpCircle);
         return IconComponent ? <IconComponent size={18} /> : <HelpCircle size={18} />;
     };
 
@@ -1396,7 +1373,7 @@ function MetaEditor({ title, docId, fields, isDark }) {
     // ⚡ FIX: Same Safe Rendering Here
     const renderIcon = (iconName) => { 
         if (!iconName) return <Plus size={20} />; 
-        const IconComponent = LucideIcons[iconName]; 
+        const IconComponent = getLucideIcon(iconName, Plus); 
         return IconComponent ? <IconComponent size={20} /> : <Plus size={20} />; 
     };
 

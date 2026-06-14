@@ -12,7 +12,6 @@ import {
     ShieldAlert, Share2, Heart, Send,
     ArrowLeft, Sun, Moon, Footprints, Check, Globe2, AlertTriangle, Edit3, Hammer, SearchCheck, Gift, X
 } from "lucide-react";
-import * as LucideIcons from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import { db } from "../services/firebase";
 import { useAuth } from "../contexts/AuthContext";
@@ -28,6 +27,7 @@ import SmartImage from "../components/ui/SmartImage";
 import { canReviewStoryAsStaff } from "../utils/admin";
 import { goBackOrFallback } from "../utils/navigation";
 import { getProfilePhotoUrl } from "../utils/userProfile";
+import { getLucideIcon } from "../utils/lucideIconMap";
 
 // --- CONTEXT FOR SMART REVIEW ---
 const ReviewContext = createContext();
@@ -432,7 +432,7 @@ export default function StoryDetail() {
     const categoryData = story?.category ? categories.find(c => c.value === story.category || c.label === story.category) : null;
     const tripTypeData = story?.tripType ? tripTypes.find(t => t.value === story.tripType || t.label === story.tripType) : null;
     const difficultyData = story?.difficulty ? difficulties.find(d => d.value === story.difficulty || d.label === story.difficulty) : null;
-    const CategoryIcon = categoryData && LucideIcons[categoryData.icon] ? LucideIcons[categoryData.icon] : null;
+    const CategoryIcon = categoryData ? getLucideIcon(categoryData.icon, null) : null;
     const categoryColor = categoryData ? getColorHex(categoryData.color) : "#fff";
     const tripDurationDays = story?.tripDurationDays || story?.durationDays || days.length || 1;
     const budgetValue = Number(story?.totalCost || 0);

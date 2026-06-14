@@ -5,11 +5,11 @@ import { db } from "../../services/firebase";
 import { useAuth } from "../../contexts/AuthContext"; 
 import { useNavigate } from "react-router-dom"; 
 import { motion, AnimatePresence } from "framer-motion";
-import * as LucideIcons from "lucide-react"; 
 import { Bell, Heart, X, Sparkles, Check, Quote, Star, User } from "lucide-react"; 
 import confetti from "canvas-confetti";
 import { isAuthorizedAdmin } from "../../utils/admin";
 import { getNotificationRecipientIds, markAllAsRead, normalizeNotification, sortNotificationsByDate } from "../../services/notificationService";
+import { getLucideIcon } from "../../utils/lucideIconMap";
 
 // --- 1. DYNAMIC ICON RENDERER ---
 const DynamicIcon = ({ name, className, size = 24 }) => {
@@ -17,7 +17,7 @@ const DynamicIcon = ({ name, className, size = 24 }) => {
     if (!name) return <Sparkles className={className} size={size} strokeWidth={1.5} />;
     
     // Check if icon exists in Lucide library
-    const IconComp = LucideIcons[name] || Sparkles;
+    const IconComp = getLucideIcon(name, Sparkles);
     return <IconComp className={className} size={size} strokeWidth={1.5} />;
 };
 

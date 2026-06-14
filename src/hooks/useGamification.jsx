@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../services/firebase";
-import * as LucideIcons from "lucide-react"; 
+import { RenderLucideIcon } from "../utils/lucideIconMap";
 
 // --- DYNAMIC GAMIFICATION HOOK ---
 export function useGamification(userXP = 0, userBadges = [], userInventory = []) {
@@ -92,6 +92,5 @@ export function useGamification(userXP = 0, userBadges = [], userInventory = [])
 
 // --- HELPER: Render Dynamic Icons ---
 export const RenderIcon = ({ iconName, size = 20, className }) => {
-    const Icon = LucideIcons[iconName] || LucideIcons.Star;
-    return <Icon size={size} className={className} />;
+    return <RenderLucideIcon iconName={iconName} size={size} className={className} />;
 };

@@ -4,7 +4,6 @@ import {
   Camera, Image as ImageIcon, Loader2, AlertCircle,
   Youtube, Type, ArrowLeft, Sun, Moon, AlertTriangle, Globe2, Lock, Edit3, CheckCircle2, Hammer, MailCheck
 } from "lucide-react";
-import * as LucideIcons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import {
@@ -28,6 +27,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useMetaOptions } from "../hooks/useMetaOptions";
 import { notifyStorySubmittedForReview } from "../services/reviewService";
 import DatePicker from "../components/ui/DatePicker";
+import { getLucideIcon } from "../utils/lucideIconMap";
 import LocationPicker from "../components/ui/LocationPicker";
 import { goBackOrFallback } from "../utils/navigation";
 
@@ -997,7 +997,7 @@ const CustomSelect = ({ label, value, onChange, options, placeholder, disabled, 
 
   const renderIcon = (iconName) => {
     if (!iconName) return null;
-    const IconComponent = LucideIcons[iconName];
+    const IconComponent = getLucideIcon(iconName, null);
     return IconComponent ? <IconComponent size={16} /> : null;
   };
 
